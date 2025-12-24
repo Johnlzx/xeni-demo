@@ -58,11 +58,22 @@ export function CaseProfileView({
 }: CaseProfileViewProps) {
   const sections = buildProfileSections(caseData, documents, issues);
   const [previewDocument, setPreviewDocument] = useState<Document | null>(null);
+  const [highlightField, setHighlightField] = useState<string | undefined>(undefined);
 
-  const handleDocumentClick = (documentId: string) => {
+  const handleDocumentClick = (documentId: string, fieldLabel?: string) => {
     const doc = documents.find(d => d.id === documentId);
     if (doc) {
       setPreviewDocument(doc);
+      // Convert label to field key format (e.g., "Given Names" -> "givenNames")
+      if (fieldLabel) {
+        const fieldKey = fieldLabel
+          .split(' ')
+          .map((word, i) => i === 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+          .join('');
+        setHighlightField(fieldKey);
+      } else {
+        setHighlightField(undefined);
+      }
     }
   };
 
@@ -130,8 +141,12 @@ export function CaseProfileView({
       {/* Document Preview Modal */}
       <DocumentPreviewModal
         isOpen={!!previewDocument}
-        onClose={() => setPreviewDocument(null)}
+        onClose={() => {
+          setPreviewDocument(null);
+          setHighlightField(undefined);
+        }}
         document={previewDocument}
+        highlightField={highlightField}
       />
     </div>
   );
@@ -142,7 +157,7 @@ function ProfileSectionCard({
   onDocumentClick,
 }: {
   section: ProfileSection;
-  onDocumentClick?: (documentId: string) => void;
+  onDocumentClick?: (documentId: string, fieldLabel?: string) => void;
 }) {
   const Icon = section.icon;
   const hasAnyConflict = section.fields.some((f) => f.hasConflict);
@@ -201,7 +216,7 @@ function ProfileFieldCell({
   onDocumentClick,
 }: {
   field: ProfileField;
-  onDocumentClick?: (documentId: string) => void;
+  onDocumentClick?: (documentId: string, fieldLabel?: string) => void;
 }) {
   return (
     <div
@@ -218,6 +233,7 @@ function ProfileFieldCell({
           source={field.source}
           label={field.sourceLabel}
           documentId={field.documentId}
+          fieldLabel={field.label}
           onDocumentClick={onDocumentClick}
         />
       </div>
@@ -249,12 +265,14 @@ function DataSourceBadge({
   source,
   label,
   documentId,
+  fieldLabel,
   onDocumentClick,
 }: {
   source: DataSource;
   label?: string;
   documentId?: string;
-  onDocumentClick?: (documentId: string) => void;
+  fieldLabel?: string;
+  onDocumentClick?: (documentId: string, fieldLabel?: string) => void;
 }) {
   const config = {
     passport: {
@@ -293,7 +311,7 @@ function DataSourceBadge({
   if (isClickable) {
     return (
       <button
-        onClick={() => onDocumentClick(documentId)}
+        onClick={() => onDocumentClick(documentId, fieldLabel)}
         className={cn(
           'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
           'transition-colors cursor-pointer',

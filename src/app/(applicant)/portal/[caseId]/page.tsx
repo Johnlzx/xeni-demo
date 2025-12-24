@@ -3,14 +3,12 @@
 import { useMemo } from 'react';
 import { notFound, useParams } from 'next/navigation';
 import { Card, Badge, Button } from '@/components/ui';
-import { ProgressTracker, DocumentRequestList } from '@/components/portal';
+import { DocumentRequestList } from '@/components/portal';
 import {
   User,
   Calendar,
   Globe,
-  FileText,
   AlertCircle,
-  CheckCircle,
   MessageSquare,
   LogOut,
 } from 'lucide-react';
@@ -18,8 +16,7 @@ import { getCaseById } from '@/data/cases';
 import { getDocumentsByCaseId } from '@/data/documents';
 import { getOpenIssuesByCaseId } from '@/data/issues';
 import { generateChecklistForCase } from '@/data/checklists';
-import { generateProgressSteps } from '@/data/progress';
-import { VISA_TYPES, CASE_STATUSES } from '@/data/constants';
+import { VISA_TYPES } from '@/data/constants';
 import { formatDate } from '@/lib/utils';
 import Link from 'next/link';
 
@@ -38,10 +35,8 @@ export default function ApplicantCasePage() {
     () => generateChecklistForCase(caseData.visaType, caseId),
     [caseData.visaType, caseId]
   );
-  const progressSteps = generateProgressSteps(caseData.status);
 
   const visaConfig = VISA_TYPES[caseData.visaType];
-  const statusConfig = CASE_STATUSES[caseData.status];
 
   const handleUpload = (itemId: string, file: File) => {
     console.log('Uploading file for item:', itemId, file.name);
@@ -118,32 +113,20 @@ export default function ApplicantCasePage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-3 gap-6">
-        {/* Progress Tracker */}
-        <div className="col-span-1">
-          <Card>
-            <h2 className="font-semibold text-gray-900 mb-4">Application Progress</h2>
-            <ProgressTracker steps={progressSteps} />
-          </Card>
+      {/* Document Requests */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-gray-900">Required Documents</h2>
+          <Badge variant="primary">
+            {caseData.stats.documentsUploaded}/{caseData.stats.documentsTotal} uploaded
+          </Badge>
         </div>
-
-        {/* Document Requests */}
-        <div className="col-span-2">
-          <Card>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-900">Required Documents</h2>
-              <Badge variant="primary">
-                {caseData.stats.documentsUploaded}/{caseData.stats.documentsTotal} uploaded
-              </Badge>
-            </div>
-            <DocumentRequestList
-              items={checklistItems}
-              documents={documents}
-              onUpload={handleUpload}
-            />
-          </Card>
-        </div>
-      </div>
+        <DocumentRequestList
+          items={checklistItems}
+          documents={documents}
+          onUpload={handleUpload}
+        />
+      </Card>
 
       {/* Contact Section */}
       <Card className="bg-primary-50 border-primary-200">

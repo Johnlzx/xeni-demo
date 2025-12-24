@@ -56,9 +56,15 @@ export function DocumentPreviewModal({
     if (doc) {
       setScale(100);
       setCurrentPage(1);
-      setActiveTab(relatedIssues.length > 0 ? 'issues' : 'preview');
+      // If a field is highlighted, show the preview tab first so user sees the highlighted content
+      // Otherwise, show issues tab if there are issues
+      if (highlightField) {
+        setActiveTab('preview');
+      } else {
+        setActiveTab(relatedIssues.length > 0 ? 'issues' : 'preview');
+      }
     }
-  }, [doc?.id, relatedIssues.length]);
+  }, [doc?.id, relatedIssues.length, highlightField]);
 
   // Handle escape key
   useEffect(() => {
