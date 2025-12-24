@@ -1,24 +1,23 @@
 'use client';
 
-import { useMemo, useRef } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { notFound, useParams } from 'next/navigation';
-import { useCasePhase } from '@/hooks/useCasePhase';
 import {
   CaseStatusHeader,
   IntakePhaseView,
-  CompliancePhaseView,
-  ReadyPhaseView,
 } from '@/components/case-detail';
 import { getCaseById } from '@/data/cases';
 import { getDocumentsByCaseId } from '@/data/documents';
 import { getIssuesByCaseId } from '@/data/issues';
-import { generateChecklistForCase } from '@/data/checklists';
 
 export default function CaseDetailPage() {
   const params = useParams();
   const caseId = params.caseId as string;
   const caseData = getCaseById(caseId);
-  const issuesSectionRef = useRef<HTMLDivElement>(null);
+  const [jumpToSlotId, setJumpToSlotId] = useState<string | null>(null);
+
+  // Demo mode: track resolved issues
+  const [demoResolvedIssues, setDemoResolvedIssues] = useState<Set<string>>(new Set());
 
   if (!caseData) {
     notFound();
@@ -26,68 +25,61 @@ export default function CaseDetailPage() {
 
   // Fetch related data
   const documents = getDocumentsByCaseId(caseId);
-  const issues = getIssuesByCaseId(caseId);
-  const checklistItems = useMemo(
-    () => generateChecklistForCase(caseData.visaType, caseId),
-    [caseData.visaType, caseId]
-  );
+  const rawIssues = getIssuesByCaseId(caseId);
 
-  // Determine current phase and related info
-  const {
-    phase,
-    responsibleParty,
-    blockingReason,
-    primaryAction,
-  } = useCasePhase(caseData.status, issues);
+  // Apply demo resolved overrides to issues
+  const issues = useMemo(() => {
+    return rawIssues.map(issue =>
+      demoResolvedIssues.has(issue.id)
+        ? { ...issue, status: 'resolved' as const }
+        : issue
+    );
+  }, [rawIssues, demoResolvedIssues]);
 
-  // Handlers
-  const handlePrimaryAction = (action: string) => {
-    console.log('Primary action triggered:', action);
-    switch (action) {
-      case 'request_documents':
-        // Navigate to intake or open request modal
-        break;
-      case 'start_compliance':
-        // Trigger compliance review
-        break;
-      case 'resolve_conflicts':
-        // Scroll to conflict section
-        break;
-      case 'mark_ready':
-        // Mark case as ready
-        break;
-      case 'launch_form_pilot':
-        // Launch form pilot
-        break;
-      default:
-        break;
-    }
+  // Demo: resolve an issue
+  const handleDemoResolveIssue = useCallback((issueId: string) => {
+    setDemoResolvedIssues(prev => {
+      const newSet = new Set(prev);
+      newSet.add(issueId);
+      return newSet;
+    });
+  }, []);
+
+  const handleSlotJump = (slotId: string) => {
+    setJumpToSlotId(slotId);
+    setTimeout(() => setJumpToSlotId(null), 100);
   };
 
-  const handleIssueClick = (type: 'quality' | 'logic') => {
-    // Scroll to issues section
-    issuesSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // Evidence slot handlers
+  const handleUploadUnclassified = (file: File) => {
+    console.log('Uploading file via AI classification:', file.name);
   };
 
-  const handleUpload = (checklistItemId: string, file: File) => {
-    console.log('Uploading file for checklist item:', checklistItemId, file.name);
+  const handleUploadToSlot = (file: File, slotId: string, typeId: string) => {
+    console.log('Uploading file to slot:', file.name, 'slot:', slotId, 'type:', typeId);
   };
 
   const handlePreview = (documentId: string) => {
     console.log('Preview document:', documentId);
   };
 
-  const handleSendRequest = (checklistItemIds: string[]) => {
-    console.log('Send request for items:', checklistItemIds);
+  const handleRemove = (documentId: string) => {
+    console.log('Remove document:', documentId);
   };
 
-  const handleResolveIssue = (issueId: string, action: 'override' | 'request_clarification') => {
-    console.log('Resolve issue:', issueId, 'with action:', action);
+  const handleSendRequest = (slotIds: string[], channel: 'email' | 'whatsapp', message: string) => {
+    console.log('Send request for slots:', slotIds, 'via', channel);
+    console.log('Message:', message);
   };
+
+  // Applicant info for request modal
+  const applicantName = `${caseData.applicant.passport.givenNames} ${caseData.applicant.passport.surname}`;
+  const applicantEmail = caseData.applicant.email;
+  const applicantPhone = '+44 7700 900123'; // Mock phone for demo
+  const caseReference = caseData.referenceNumber;
 
   const handleLaunchFormPilot = () => {
     console.log('Launching Form Pilot...');
-    // In a real app, this would trigger the browser extension
   };
 
   return (
@@ -95,41 +87,33 @@ export default function CaseDetailPage() {
       {/* Status Header */}
       <CaseStatusHeader
         caseData={caseData}
-        phase={phase}
+        documents={documents}
         issues={issues}
-        responsibleParty={responsibleParty}
-        blockingReason={blockingReason}
-        primaryAction={primaryAction}
-        onPrimaryAction={handlePrimaryAction}
-        onIssueClick={handleIssueClick}
+        onSlotJump={handleSlotJump}
+        onDemoResolveIssue={handleDemoResolveIssue}
       />
 
-      {/* Phase-specific Content */}
-      <div ref={issuesSectionRef} className="flex-1 overflow-hidden">
-        {phase === 'intake' && (
-          <IntakePhaseView
-            checklistItems={checklistItems}
-            documents={documents}
-            issues={issues}
-            onUpload={handleUpload}
-            onPreview={handlePreview}
-            onSendRequest={handleSendRequest}
-          />
-        )}
-
-        {phase === 'compliance' && (
-          <CompliancePhaseView
-            issues={issues}
-            onResolveIssue={handleResolveIssue}
-          />
-        )}
-
-        {phase === 'ready' && (
-          <ReadyPhaseView
-            caseData={caseData}
-            onLaunchFormPilot={handleLaunchFormPilot}
-          />
-        )}
+      {/* Main Content - Case Profile + Evidence Checklist */}
+      <div className="flex-1 overflow-hidden">
+        <IntakePhaseView
+          caseId={caseId}
+          visaType={caseData.visaType}
+          documents={documents}
+          issues={issues}
+          caseData={caseData}
+          applicantName={applicantName}
+          applicantEmail={applicantEmail}
+          applicantPhone={applicantPhone}
+          caseReference={caseReference}
+          onUploadUnclassified={handleUploadUnclassified}
+          onUploadToSlot={handleUploadToSlot}
+          onPreview={handlePreview}
+          onRemove={handleRemove}
+          onSendRequest={handleSendRequest}
+          onResolveIssue={handleDemoResolveIssue}
+          jumpToSlotId={jumpToSlotId}
+          onLaunchFormPilot={handleLaunchFormPilot}
+        />
       </div>
     </div>
   );

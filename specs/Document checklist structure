@@ -1,0 +1,221 @@
+DOCUMENT CHECKLIST STRUCTURE
+To automate immigration casework effectively, Xeni needs a consistent way to represent every piece of evidence submitted by a client. The Home Office organises requirements at a category level (e.g., Financial Requirement, English Language), but lawyers work with documents, bundles, and raw files that rarely match this structure. The following four-layer hierarchy—Category → Document Type → Document Instance → Files—provides a unified model that mirrors how evidence is requested, reviewed, assembled, and submitted in practice. It allows Xeni to: generate accurate checklists, classify and assemble documents automatically, extract structured data for analysis, flag missing or inconsistent evidence, and produce submission-ready bundles for lawyers and caseworkers. This model is the foundation for the Liaison, Auditor, and Analyst workflows across the entire Xeni system.
+TOP-LEVEL STRUCTURE
+EVIDENCE CATEGORY  
+ → DOCUMENT TYPE  
+ → DOCUMENT INSTANCE  
+ → FILES (raw uploads)
+
+This 4-layer model allows Xeni to replicate exactly how immigration evidence is required, reviewed, and submitted.
+
+1. EVIDENCE CATEGORY (Home Office category level)
+   This is the highest level and corresponds to how the Home Office organises evidence.
+   Examples (for Partner/Spouse Visa) (View full list of partner/spouse documents)a :
+   Identity & Personal Status
+   Relationship Evidence
+   Accommodation
+   Financial Requirement (Category A/B/C/F etc.)
+   English Language
+   Suitability
+   Immigration History
+   Translations
+   Cohabitation Evidence / Proof of Address
+   Children (if applicable)
+   Sponsor Eligibility
+   Other Supporting Evidence
+
+Rules:
+Categories shown are determined by visa route, then refined by case details.
+
+Categories can be marked required, optional, or conditional.
+
+Each category contains multiple valid Document Types.
+Some Documents uploaded may not be valid for any category and this should be flagged as invalid and require a lawyer to review and categories manually if the system has made an error
+
+2. DOCUMENT TYPE (Valid types of evidence within a category)
+   These correspond to the specific kinds of documents the Home Office accepts.
+   Examples under each category
+
+Identity & Personal Status
+Passport (Applicant)
+Passport (Sponsor)
+BRP
+Birth Certificate
+Marriage Certificate
+
+Relationship Evidence
+Marriage Certificate (merged into ID category optionally)
+Photos Together
+Travel Together Evidence
+Communication Logs
+Witness Statements
+
+Accommodation
+Tenancy Agreement
+Mortgage Statement
+Property Inspection Report
+Landlord Letter
+
+Financial Requirement
+Depending on the income route:
+Category A: Salaried Employment
+Payslips (6 months)
+Bank Statements (6 months)
+Employer Letter
+
+Category B: Variable Income
+Payslips (12 months)
+Bank Statements (12 months)
+Employer Letter
+Additional Income Explanation
+
+Self-Employment
+Tax Returns (SA302, Tax Year Overviews)
+
+Company Accounts
+Accountant Letter
+Dividend Vouchers
+
+Savings Route
+Bank Book or Statements (6 months)
+Source of Funds Evidence
+
+English Language
+Approved English Test Certificate
+Degree Taught in English
+ECCTIS Certificate (if applicable)
+
+Suitability
+Criminal Record Certificates
+Previous Refusals
+Previous Application Forms
+Immigration Bail Documents
+
+Cohabitation Evidence
+Council Tax Bills
+Utility Bills
+Bank Statements (address only)
+Joint Tenancy Agreements
+NHS or Government Letters
+
+Translations of Foreign Language Document
+Translation + Translator Declaration + Original Document all combined
+
+Visa-Type Specific Rules
+Document Types shown depend on:
+Visa route
+In-country vs entry clearance
+Dependants vs adults
+Case nuances (self-employed, sponsor abroad, etc.)
+
+3. DOCUMENT INSTANCE (The “bundle” lawyers work with)
+   A Document Instance is what lawyers consider a "document" for submission purposes.
+   It is made up of one or more Files uploaded by the client.
+   Examples:
+   Example: Bank Statements (6 months)
+   Document Type: Bank Statements
+   Instances:
+
+Bank Statements June 2024
+Bank Statements July 2024
+…
+
+Or: “Bank Statements (6 months combined)” — created by Auditor Agent
+
+Example: Proof of Cohabitation
+Document Type: Council Tax Bills
+Instances:
+
+Council Tax Bill 2023
+Council Tax Bill 2024
+
+Example: Passport
+Document Type: Passport
+
+Instances:
+
+Passport (Applicant)
+Passport (Sponsor)
+
+Example: Photos
+All photo uploads are combined into a single Photo Evidence instance.
+
+Rules for Document Instances
+Instances can be automatically created (e.g., one per month).
+Instances are versioned, as clients often resend corrected versions.
+Each instance receives a status:
+
+Submitted
+Incomplete
+Needs Review
+Approved
+Rejected
+
+4. FILES (Raw uploads)
+   These are the actual files sent by the client:
+   email attachments
+   WhatsApp images
+   PDF uploads
+   zipped folders
+   screenshots
+   camera photos
+
+The Liaison Agent ingests the files → Auditor Agent reformats them → Analyst Agent interprets them.
+File rules
+Files are first classified into a Document Type
+
+Files may be merged into a Document Instance (e.g., six PDF payslips → one payslip bundle)
+Files can be replaced as clients reupload
+Files inherit metadata:
+
+upload channel
+timestamp
+sender
+confidence score
+
+HOW THE HIERARCHY WORKS IN PRACTICE FOR A SPOUSE VISA
+Example:
+Category: Financial Requirement
+Document Type: Payslips (Category A)
+Document Instances:
+Payslip Apr 2024
+Payslip May 2024
+Payslip Jun 2024
+…
+
+Files:
+IMG_2031.jpg (WhatsApp)
+payslip_june.pdf (Email)
+
+The system:
+Detects file type (payslip)
+Extracts date
+Creates/assigns a Document Instance
+Normalises format via Auditor Agent
+Analyst Agent checks if:
+
+period is correct
+duplicates exist
+missing months
+That the combined amounts in the payslip meet the home-office criteria for the visa type being applied for
+
+Liaison Agent updates the checklist dynamically in real time.
+
+ADDING CASE LOGIC & CONDITIONALITY
+Each evidence category is shown or hidden based on:
+
+1. Visa Type
+   Example:
+   English Language always required
+   Savings route only shown if client selects “Savings”
+
+2. Case Details
+   Examples:
+   Self-employed? → show SA302 + accounts
+   Sponsor abroad? → show “Sponsor Return to UK Evidence”
+   Children? → show birth certificates
+
+3. Analyst Agent Findings
+   Example:
+   If Analyst detects missing July bank statement → creates “Missing Document” instance
+   Liaison Agent chases automatically

@@ -4,12 +4,15 @@ import { useState } from 'react';
 import {
   AlertCircle,
   CheckCircle,
+  CheckCircle2,
   MessageSquare,
   FileText,
   ChevronRight,
   ArrowRight,
   Scale,
   Clock,
+  Sparkles,
+  Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Issue, ConflictDetails } from '@/types';
@@ -19,6 +22,8 @@ interface ConflictResolutionCenterProps {
   onResolve: (issueId: string, action: 'override' | 'request_clarification') => void;
   onSelectConflict: (issue: Issue) => void;
   selectedIssueId?: string | null;
+  /** Demo mode: callback to simulate resolving an issue */
+  onDemoResolve?: (issueId: string) => void;
 }
 
 export function ConflictResolutionCenter({
@@ -26,7 +31,9 @@ export function ConflictResolutionCenter({
   onResolve,
   onSelectConflict,
   selectedIssueId,
+  onDemoResolve,
 }: ConflictResolutionCenterProps) {
+  const [resolvingAll, setResolvingAll] = useState(false);
   const logicIssues = issues.filter((i) => i.type === 'logic' && i.status === 'open');
   const resolvedIssues = issues.filter((i) => i.type === 'logic' && i.status === 'resolved');
 
@@ -51,6 +58,43 @@ export function ConflictResolutionCenter({
               </p>
             </div>
           </div>
+
+          {/* Demo: Resolve All Button */}
+          {onDemoResolve && logicIssues.length > 0 && (
+            <button
+              onClick={() => {
+                setResolvingAll(true);
+                // Resolve issues one by one with stagger
+                logicIssues.forEach((issue, index) => {
+                  setTimeout(() => {
+                    onDemoResolve(issue.id);
+                    if (index === logicIssues.length - 1) {
+                      setTimeout(() => setResolvingAll(false), 300);
+                    }
+                  }, index * 200);
+                });
+              }}
+              disabled={resolvingAll}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all",
+                resolvingAll
+                  ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                  : "bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg shadow-violet-500/25 hover:shadow-xl hover:shadow-violet-500/30 hover:-translate-y-0.5"
+              )}
+            >
+              {resolvingAll ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 animate-checkmark-pop" />
+                  Resolving...
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4" />
+                  Demo: Resolve All
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Summary Stats */}
@@ -107,6 +151,7 @@ export function ConflictResolutionCenter({
                 isSelected={selectedIssueId === issue.id}
                 onSelect={() => onSelectConflict(issue)}
                 onResolve={(action) => onResolve(issue.id, action)}
+                onDemoResolve={onDemoResolve ? () => onDemoResolve(issue.id) : undefined}
               />
             ))}
           </div>
@@ -122,13 +167,25 @@ function ConflictCard({
   isSelected,
   onSelect,
   onResolve,
+  onDemoResolve,
 }: {
   issue: Issue;
   isSelected: boolean;
   onSelect: () => void;
   onResolve: (action: 'override' | 'request_clarification') => void;
+  onDemoResolve?: () => void;
 }) {
   const [showActions, setShowActions] = useState(false);
+  const [isResolving, setIsResolving] = useState(false);
+
+  const handleDemoResolve = () => {
+    if (!onDemoResolve) return;
+    setIsResolving(true);
+    setTimeout(() => {
+      onDemoResolve();
+      setIsResolving(false);
+    }, 400);
+  };
 
   const severityConfig = {
     error: {
@@ -237,6 +294,34 @@ function ConflictCard({
               <MessageSquare className="w-3.5 h-3.5" />
               Request Clarification
             </button>
+            {/* Demo resolve button */}
+            {onDemoResolve && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDemoResolve();
+                }}
+                disabled={isResolving}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all",
+                  isResolving
+                    ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                    : "text-violet-600 bg-violet-50 hover:bg-violet-100 border border-violet-200"
+                )}
+              >
+                {isResolving ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 animate-checkmark-pop" />
+                    Resolved
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Demo: Resolve
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
 

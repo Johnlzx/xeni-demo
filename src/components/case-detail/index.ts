@@ -1,7 +1,10 @@
 export { StatusRibbon, StatusRibbonCompact } from './StatusRibbon';
-export { IssueCounter, IssueCounterBadge } from './IssueCounter';
+export { IssueCounter } from './IssueCounter';
 export { ResponsibilityBadge, ResponsibilityBadgeCompact } from './ResponsibilityBadge';
 export { CaseStatusHeader } from './CaseStatusHeader';
+export { PassportButton } from './PassportButton';
+export { PassportModal } from './PassportModal';
+export { CaseProfileView } from './CaseProfileView';
 export { IntakePhaseView } from './IntakePhaseView';
 export { ConflictResolutionCenter } from './ConflictResolutionCenter';
 export { PdfViewer, PdfViewerMock } from './PdfViewer';
@@ -9,3 +12,4 @@ export { ComparisonSplitView, generateSampleExtractedData } from './ComparisonSp
 export { CompliancePhaseView } from './CompliancePhaseView';
 export { SchemaPreviewWall } from './SchemaPreviewWall';
 export { ReadyPhaseView } from './ReadyPhaseView';
+export { PhaseTransition } from './PhaseTransition';

@@ -54,6 +54,22 @@ const config: Config = {
         modal: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
         dropdown: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
       },
+      keyframes: {
+        'checkmark-pop': {
+          '0%': { transform: 'scale(0.8)', opacity: '0' },
+          '50%': { transform: 'scale(1.2)' },
+          '100%': { transform: 'scale(1)', opacity: '1' },
+        },
+        'slot-complete': {
+          '0%': { backgroundColor: 'rgba(16, 185, 129, 0)' },
+          '30%': { backgroundColor: 'rgba(16, 185, 129, 0.1)' },
+          '100%': { backgroundColor: 'rgba(16, 185, 129, 0)' },
+        },
+      },
+      animation: {
+        'checkmark-pop': 'checkmark-pop 0.4s ease-out',
+        'slot-complete': 'slot-complete 0.6s ease-out',
+      },
     },
   },
   plugins: [],

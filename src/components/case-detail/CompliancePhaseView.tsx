@@ -8,11 +8,14 @@ import type { Issue } from '@/types';
 interface CompliancePhaseViewProps {
   issues: Issue[];
   onResolveIssue: (issueId: string, action: 'override' | 'request_clarification') => void;
+  /** Demo mode: callback to simulate resolving an issue */
+  onDemoResolve?: (issueId: string) => void;
 }
 
 export function CompliancePhaseView({
   issues,
   onResolveIssue,
+  onDemoResolve,
 }: CompliancePhaseViewProps) {
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
 
@@ -30,6 +33,7 @@ export function CompliancePhaseView({
           onResolve={onResolveIssue}
           onSelectConflict={(issue) => setSelectedIssue(issue)}
           selectedIssueId={selectedIssue?.id}
+          onDemoResolve={onDemoResolve}
         />
       </div>
 

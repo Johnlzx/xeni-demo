@@ -119,7 +119,7 @@ export function CreateCaseModal({ isOpen, onClose, onSubmit }: CreateCaseModalPr
     setShowMergeSelector(true);
   }, []);
 
-  const handleMerge = useCallback(async (orderedIds: string[]) => {
+  const handleMerge = useCallback(async (orderedIds: string[], mergedFileName: string) => {
     // Simulate merge - in a real app, this would call a backend API
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
@@ -131,7 +131,7 @@ export function CreateCaseModal({ isOpen, onClose, onSubmit }: CreateCaseModalPr
     const mergedFile: UploadedFile = {
       id: Math.random().toString(36).substring(2, 11),
       file: mergedFiles[0].file, // In reality, this would be the merged PDF
-      name: `merged_${mergedFiles[0].name}`,
+      name: mergedFileName, // Use the user-provided or AI-suggested file name
       size: mergedFiles.reduce((acc, f) => acc + f.size, 0),
       type: 'application/pdf',
     };
