@@ -47,10 +47,18 @@ export function EvidenceSlotList({
   onRequestDocuments,
   progress,
 }: EvidenceSlotListProps) {
-  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(null);
   const [selectedSlotIds, setSelectedSlotIds] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+
+  // Initialize with all categories collapsed (computed from initial slots)
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(() => {
+    const categoryIds = new Set<string>();
+    slots.filter(s => s.status !== 'hidden').forEach(slot => {
+      categoryIds.add(slot.categoryId || 'other');
+    });
+    return categoryIds;
+  });
 
   // Filter out hidden slots
   const visibleSlots = slots.filter(s => s.status !== 'hidden');
