@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   CheckCircle2,
   Circle,
@@ -23,11 +23,20 @@ import {
   RefreshCw,
   X,
   Zap,
+  ArrowLeft,
+  Mail,
+  MessageCircle,
+  Copy,
+  Check,
+  User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DocumentPipeline, PipelineStatusBadge } from './DocumentPipeline';
 import type { EvidenceSlot, Document, Issue, AcceptableDocumentType } from '@/types';
 import { getSlotStatusColor } from '@/hooks/useEvidenceSlots';
+
+type ModalView = 'details' | 'request';
+type Channel = 'email' | 'whatsapp';
 
 interface EvidenceSlotModalProps {
   isOpen: boolean;
@@ -38,8 +47,55 @@ interface EvidenceSlotModalProps {
   onPreview: (docId: string) => void;
   onRemove: (docId: string) => void;
   onUpload?: (file: File, typeId?: string) => void;
-  onSendRequest?: (slotId: string) => void;
+  onSendRequest?: (slotId: string, channel: Channel, message: string) => void;
   onResolveIssue?: (issueId: string) => void;
+  // Applicant info for request form
+  applicantName?: string;
+  applicantEmail?: string;
+  applicantPhone?: string;
+  caseReference?: string;
+}
+
+// AI Message Generator
+function generateMessage(
+  channel: Channel,
+  slot: EvidenceSlot,
+  applicantName: string,
+  caseReference: string
+): string {
+  const firstName = applicantName.split(' ')[0];
+  const requirements = slot.acceptableTypes[0]?.requirements || [];
+  const acceptedTypes = slot.acceptableTypes.map(t => t.label).slice(0, 2);
+
+  if (channel === 'whatsapp') {
+    let msg = `Hi ${firstName}! 👋\n\n`;
+    msg += `Quick update on your application (Ref: ${caseReference}).\n\n`;
+    msg += `We need: *${slot.name}*\n\n`;
+    if (acceptedTypes.length > 0) {
+      msg += `Accepted: ${acceptedTypes.join(' or ')}\n`;
+    }
+    if (requirements.length > 0) {
+      msg += `\n⚠️ ${requirements[0]}\n`;
+    }
+    msg += `\nPlease upload via your portal or reply with a photo/scan.\n\nQuestions? Just reply! 📱`;
+    return msg;
+  } else {
+    let msg = `Dear ${applicantName},\n\n`;
+    msg += `I hope this email finds you well. Regarding your application (Reference: ${caseReference}).\n\n`;
+    msg += `We require the following documentation:\n\n`;
+    msg += `• ${slot.name}\n`;
+    if (acceptedTypes.length > 0) {
+      msg += `  Acceptable formats: ${acceptedTypes.join(', ')}\n`;
+    }
+    if (requirements.length > 0) {
+      requirements.slice(0, 3).forEach(req => {
+        msg += `  - ${req}\n`;
+      });
+    }
+    msg += `\nPlease upload through your secure client portal at your earliest convenience.\n\n`;
+    msg += `Kind regards,\n[Your Name]\nImmigration Advisor`;
+    return msg;
+  }
 }
 
 export function EvidenceSlotModal({
@@ -53,17 +109,44 @@ export function EvidenceSlotModal({
   onUpload,
   onSendRequest,
   onResolveIssue,
+  applicantName = 'Client',
+  applicantEmail,
+  applicantPhone,
+  caseReference = 'REF-000',
 }: EvidenceSlotModalProps) {
   const colors = getSlotStatusColor(slot.status);
-  const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState<ModalView>('details');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Request form state
+  const [channel, setChannel] = useState<Channel>('email');
+  const [customMessage, setCustomMessage] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+
+  // Reset view when modal opens/closes or slot changes
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentView('details');
+      setCustomMessage(null);
+      setCopied(false);
+      setIsSending(false);
+    }
+  }, [isOpen, slot.id]);
+
   // Handle escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        if (currentView === 'request') {
+          setCurrentView('details');
+        } else {
+          onClose();
+        }
+      }
     };
 
     if (isOpen) {
@@ -75,7 +158,14 @@ export function EvidenceSlotModal({
       window.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = '';
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, currentView, onClose]);
+
+  // Generated message
+  const generatedMessage = useMemo(() => {
+    return generateMessage(channel, slot, applicantName, caseReference);
+  }, [channel, slot, applicantName, caseReference]);
+
+  const message = customMessage ?? generatedMessage;
 
   if (!isOpen) return null;
 
@@ -85,8 +175,6 @@ export function EvidenceSlotModal({
   };
 
   // Filter issues for this slot
-  // Note: slot.id is prefixed (e.g., 'case-001-address_proof') but
-  // issue.targetSlotId uses template IDs (e.g., 'address_proof')
   const templateSlotId = slot.id.replace(/^case-\d+-/, '');
   const slotIssues = issues.filter(
     (issue) =>
@@ -111,6 +199,31 @@ export function EvidenceSlotModal({
   const handleDeleteConfirm = (docId: string) => {
     onRemove(docId);
     setShowDeleteConfirm(null);
+  };
+
+  const handleRegenerate = () => {
+    setIsGenerating(true);
+    setTimeout(() => {
+      setCustomMessage(null);
+      setIsGenerating(false);
+    }, 800);
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(message);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSend = () => {
+    setIsSending(true);
+    setTimeout(() => {
+      if (onSendRequest) {
+        onSendRequest(slot.id, channel, message);
+      }
+      setIsSending(false);
+      onClose();
+    }, 1000);
   };
 
   const getStatusIcon = () => {
@@ -173,12 +286,19 @@ export function EvidenceSlotModal({
         className={cn(
           'relative w-full max-w-2xl max-h-[90vh]',
           'bg-white rounded-2xl shadow-2xl',
-          'overflow-hidden flex flex-col',
-          'animate-in fade-in-0 zoom-in-95 duration-200'
+          'overflow-hidden flex flex-col'
         )}
+        style={{
+          animation: 'modalSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+        }}
       >
         {/* Header */}
-        <div className={cn('px-6 py-5 border-b', colors.bg)}>
+        <div className={cn(
+          'px-6 py-5 border-b transition-all duration-300',
+          currentView === 'request'
+            ? 'bg-gradient-to-r from-slate-50 to-white'
+            : colors.bg
+        )}>
           {/* Close button */}
           <button
             onClick={onClose}
@@ -187,61 +307,78 @@ export function EvidenceSlotModal({
             <X className="w-5 h-5" />
           </button>
 
-          <div className="flex items-start gap-4 pr-10">
-            <div
-              className={cn(
-                'w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0',
-                slot.status === 'satisfied'
-                  ? 'bg-emerald-100'
-                  : slot.status === 'issue'
-                  ? 'bg-amber-100'
-                  : slot.status === 'partial'
-                  ? 'bg-blue-100'
-                  : 'bg-gray-100'
-              )}
-            >
-              {getStatusIcon()}
+          {/* Request View Header */}
+          {currentView === 'request' ? (
+            <div className="flex items-center gap-4 pr-10">
+              <button
+                onClick={() => setCurrentView('details')}
+                className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-600" />
+              </button>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Request Document</h2>
+                <p className="text-sm text-gray-500 mt-0.5">{slot.name}</p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-1">
-                <h2 className="text-lg font-semibold text-gray-900 truncate">
-                  {slot.name}
-                </h2>
-                <span
-                  className={cn(
-                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold flex-shrink-0',
-                    slot.status === 'satisfied'
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : slot.status === 'issue'
-                      ? 'bg-amber-100 text-amber-700'
-                      : slot.status === 'partial'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-gray-100 text-gray-600'
+          ) : (
+            /* Details View Header */
+            <div className="flex items-start gap-4 pr-10">
+              <div
+                className={cn(
+                  'w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0',
+                  slot.status === 'satisfied'
+                    ? 'bg-emerald-100'
+                    : slot.status === 'issue'
+                    ? 'bg-amber-100'
+                    : slot.status === 'partial'
+                    ? 'bg-blue-100'
+                    : 'bg-gray-100'
+                )}
+              >
+                {getStatusIcon()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 mb-1">
+                  <h2 className="text-lg font-semibold text-gray-900 truncate">
+                    {slot.name}
+                  </h2>
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold flex-shrink-0',
+                      slot.status === 'satisfied'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : slot.status === 'issue'
+                        ? 'bg-amber-100 text-amber-700'
+                        : slot.status === 'partial'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-gray-100 text-gray-600'
+                    )}
+                  >
+                    {getStatusLabel()}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500">{slot.description}</p>
+
+                {/* Priority Badge */}
+                <div className="flex items-center gap-3 mt-3">
+                  {slot.priority === 'required' && (
+                    <span className="text-[11px] text-rose-600 font-medium bg-rose-50 px-2 py-0.5 rounded">
+                      Required for submission
+                    </span>
                   )}
-                >
-                  {getStatusLabel()}
-                </span>
-              </div>
-              <p className="text-sm text-gray-500">{slot.description}</p>
-
-              {/* Priority Badge */}
-              <div className="flex items-center gap-3 mt-3">
-                {slot.priority === 'required' && (
-                  <span className="text-[11px] text-rose-600 font-medium bg-rose-50 px-2 py-0.5 rounded">
-                    Required for submission
-                  </span>
-                )}
-                {slot.priority === 'optional' && (
-                  <span className="text-[11px] text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded">
-                    Optional
-                  </span>
-                )}
+                  {slot.priority === 'optional' && (
+                    <span className="text-[11px] text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded">
+                      Optional
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Progress Bar for multi-doc slots */}
-          {slot.progress.required > 1 && (
+          {/* Progress Bar for multi-doc slots (only in details view) */}
+          {currentView === 'details' && slot.progress.required > 1 && (
             <div className="mt-4">
               <div className="flex items-center justify-between text-xs mb-1.5">
                 <span className="text-gray-600">
@@ -272,136 +409,363 @@ export function EvidenceSlotModal({
 
         {/* Content - Scrollable */}
         <div className="flex-1 overflow-y-auto">
-          {/* Issues Section - Prominent at Top */}
-          {slotIssues.length > 0 && (
-            <div className="p-4 bg-amber-50 border-b border-amber-100">
-              <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle className="w-4 h-4 text-amber-600" />
-                <h3 className="text-sm font-semibold text-amber-800">
-                  {slotIssues.length} Issue{slotIssues.length > 1 ? 's' : ''} to Resolve
-                </h3>
-              </div>
-              <div className="space-y-2">
-                {slotIssues.map((issue) => (
-                  <div
-                    key={issue.id}
-                    className="bg-white rounded-lg border border-amber-200 p-3"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span
-                            className={cn(
-                              'text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded',
-                              issue.type === 'quality'
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-rose-100 text-rose-700'
+          {/* ========== DETAILS VIEW ========== */}
+          {currentView === 'details' && (
+            <>
+              {/* Issues Section - Prominent at Top */}
+              {slotIssues.length > 0 && (
+                <div className="p-4 bg-amber-50 border-b border-amber-100">
+                  <div className="flex items-center gap-2 mb-3">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    <h3 className="text-sm font-semibold text-amber-800">
+                      {slotIssues.length} Issue{slotIssues.length > 1 ? 's' : ''} to Resolve
+                    </h3>
+                  </div>
+                  <div className="space-y-2">
+                    {slotIssues.map((issue) => (
+                      <div
+                        key={issue.id}
+                        className="bg-white rounded-lg border border-amber-200 p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span
+                                className={cn(
+                                  'text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded',
+                                  issue.type === 'quality'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-rose-100 text-rose-700'
+                                )}
+                              >
+                                {issue.type}
+                              </span>
+                              <span
+                                className={cn(
+                                  'text-[10px] font-medium px-1.5 py-0.5 rounded',
+                                  issue.severity === 'error'
+                                    ? 'bg-rose-50 text-rose-600'
+                                    : issue.severity === 'warning'
+                                    ? 'bg-amber-50 text-amber-600'
+                                    : 'bg-slate-50 text-slate-600'
+                                )}
+                              >
+                                {issue.severity}
+                              </span>
+                            </div>
+                            <p className="text-sm font-medium text-gray-900">
+                              {issue.title}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {issue.description}
+                            </p>
+                            {issue.suggestion && (
+                              <div className="flex items-start gap-1.5 mt-2 text-xs text-blue-600">
+                                <Zap className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                                <span>{issue.suggestion}</span>
+                              </div>
                             )}
-                          >
-                            {issue.type}
-                          </span>
-                          <span
-                            className={cn(
-                              'text-[10px] font-medium px-1.5 py-0.5 rounded',
-                              issue.severity === 'error'
-                                ? 'bg-rose-50 text-rose-600'
-                                : issue.severity === 'warning'
-                                ? 'bg-amber-50 text-amber-600'
-                                : 'bg-slate-50 text-slate-600'
-                            )}
-                          >
-                            {issue.severity}
-                          </span>
-                        </div>
-                        <p className="text-sm font-medium text-gray-900">
-                          {issue.title}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {issue.description}
-                        </p>
-                        {issue.suggestion && (
-                          <div className="flex items-start gap-1.5 mt-2 text-xs text-blue-600">
-                            <Zap className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                            <span>{issue.suggestion}</span>
                           </div>
-                        )}
+                          {onResolveIssue && issue.status === 'open' && (
+                            <button
+                              onClick={() => onResolveIssue(issue.id)}
+                              className="flex-shrink-0 px-2.5 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
+                            >
+                              Resolve
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      {onResolveIssue && issue.status === 'open' && (
-                        <button
-                          onClick={() => onResolveIssue(issue.id)}
-                          className="flex-shrink-0 px-2.5 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
-                        >
-                          Resolve
-                        </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Acceptable Types Section */}
+              <div className="p-6 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-700">
+                    Acceptable Documents
+                  </h3>
+                  {slot.status !== 'satisfied' && (
+                    <button
+                      onClick={() => setCurrentView('request')}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#0E4369] hover:bg-[#0B3654] rounded-lg transition-colors"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      Request from Client
+                    </button>
+                  )}
+                </div>
+
+                {slot.acceptableTypes.map((type, index) => {
+                  const uploadedDocs = getDocsForType(type.typeId);
+                  const hasDoc = uploadedDocs.length > 0;
+
+                  return (
+                    <div key={type.typeId}>
+                      {/* OR Separator */}
+                      {index > 0 && (
+                        <div className="flex items-center gap-4 py-4 -mt-2">
+                          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-200 to-gray-100" />
+                          <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">
+                            or
+                          </span>
+                          <div className="flex-1 h-px bg-gradient-to-l from-transparent via-gray-200 to-gray-100" />
+                        </div>
+                      )}
+
+                      {/* Document Type Card */}
+                      <DocumentTypeCard
+                        type={type}
+                        uploadedDocs={uploadedDocs}
+                        hasDoc={hasDoc}
+                        isDragging={isDragging}
+                        setIsDragging={setIsDragging}
+                        onPreview={onPreview}
+                        onRemove={onRemove}
+                        onUpload={onUpload}
+                        handleDrop={handleDrop}
+                        handleFileSelect={handleFileSelect}
+                        formatFileSize={formatFileSize}
+                        formatDate={formatDate}
+                        getFileIcon={getFileIcon}
+                        showDeleteConfirm={showDeleteConfirm}
+                        setShowDeleteConfirm={setShowDeleteConfirm}
+                        handleDeleteConfirm={handleDeleteConfirm}
+                        expandedHistory={expandedHistory}
+                        setExpandedHistory={setExpandedHistory}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* ========== REQUEST VIEW ========== */}
+          {currentView === 'request' && (
+            <>
+              {/* Recipient Info */}
+              <div className="px-6 py-4 bg-slate-50/50 border-b border-gray-100">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-[#0E4369]/10 flex items-center justify-center">
+                    <User className="w-5 h-5 text-[#0E4369]" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900">{applicantName}</p>
+                    <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+                      {applicantEmail && (
+                        <span className="flex items-center gap-1">
+                          <Mail className="w-3 h-3" />
+                          {applicantEmail}
+                        </span>
+                      )}
+                      {applicantPhone && (
+                        <span className="flex items-center gap-1">
+                          <MessageCircle className="w-3 h-3" />
+                          {applicantPhone}
+                        </span>
                       )}
                     </div>
                   </div>
-                ))}
+                  <div className="text-right">
+                    <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">Case Ref</span>
+                    <p className="text-sm font-mono text-gray-700">{caseReference}</p>
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
 
-          {/* Acceptable Types Section */}
-          <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-700">
-                Acceptable Documents
-              </h3>
-              {onSendRequest && slot.status !== 'satisfied' && (
-                <button
-                  onClick={() => onSendRequest(slot.id)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#0E4369] hover:bg-[#0B3654] rounded-lg transition-colors"
+              {/* Channel Selector */}
+              <div className="px-6 py-4 border-b border-gray-100">
+                <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3 block">
+                  Send via
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setChannel('email');
+                      setCustomMessage(null);
+                    }}
+                    className={cn(
+                      'flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 transition-all',
+                      channel === 'email'
+                        ? 'border-[#0E4369] bg-[#0E4369]/5 text-[#0E4369]'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                    )}
+                  >
+                    <Mail className="w-5 h-5" />
+                    <span className="font-medium">Email</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setChannel('whatsapp');
+                      setCustomMessage(null);
+                    }}
+                    className={cn(
+                      'flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 transition-all',
+                      channel === 'whatsapp'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                    )}
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                    <span className="font-medium">WhatsApp</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* AI-Generated Message */}
+              <div className="px-6 py-4">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+                    AI-Drafted Message
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleRegenerate}
+                      disabled={isGenerating}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-all disabled:opacity-50"
+                    >
+                      <RefreshCw className={cn('w-3 h-3', isGenerating && 'animate-spin')} />
+                      Regenerate
+                    </button>
+                    <button
+                      onClick={handleCopy}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-all"
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-500" />
+                          <span className="text-emerald-600">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          Copy
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Message Preview */}
+                <div
+                  className={cn(
+                    'relative rounded-xl border overflow-hidden transition-all',
+                    channel === 'whatsapp'
+                      ? 'bg-[#e5ddd5] border-[#d1c8be]'
+                      : 'bg-white border-gray-200'
+                  )}
                 >
-                  <Send className="w-3.5 h-3.5" />
-                  Request from Client
-                </button>
-              )}
-            </div>
-
-            {slot.acceptableTypes.map((type, index) => {
-              const uploadedDocs = getDocsForType(type.typeId);
-              const hasDoc = uploadedDocs.length > 0;
-
-              return (
-                <div key={type.typeId}>
-                  {/* OR Separator */}
-                  {index > 0 && (
-                    <div className="flex items-center gap-4 py-4 -mt-2">
-                      <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-200 to-gray-100" />
-                      <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">
-                        or
-                      </span>
-                      <div className="flex-1 h-px bg-gradient-to-l from-transparent via-gray-200 to-gray-100" />
+                  {channel === 'whatsapp' ? (
+                    <div className="p-4">
+                      <div className="bg-[#dcf8c6] rounded-lg rounded-tr-none p-3 max-w-[90%] ml-auto shadow-sm">
+                        <textarea
+                          value={message}
+                          onChange={(e) => setCustomMessage(e.target.value)}
+                          className="w-full bg-transparent text-sm text-gray-800 resize-none outline-none min-h-[180px]"
+                          style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}
+                        />
+                        <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-gray-500">
+                          <span>Now</span>
+                          <Check className="w-3 h-3" />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4">
+                      <div className="pb-3 mb-3 border-b border-gray-100">
+                        <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
+                          <span className="font-medium text-gray-700">To:</span>
+                          {applicantEmail || 'client@email.com'}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <span className="font-medium text-gray-700">Subject:</span>
+                          Document Request - {caseReference}
+                        </div>
+                      </div>
+                      <textarea
+                        value={message}
+                        onChange={(e) => setCustomMessage(e.target.value)}
+                        className="w-full bg-transparent text-sm text-gray-700 resize-none outline-none min-h-[200px] leading-relaxed"
+                        style={{ fontFamily: 'Georgia, serif' }}
+                      />
                     </div>
                   )}
 
-                  {/* Document Type Card */}
-                  <DocumentTypeCard
-                    type={type}
-                    uploadedDocs={uploadedDocs}
-                    hasDoc={hasDoc}
-                    isDragging={isDragging}
-                    setIsDragging={setIsDragging}
-                    onPreview={onPreview}
-                    onRemove={onRemove}
-                    onUpload={onUpload}
-                    handleDrop={handleDrop}
-                    handleFileSelect={handleFileSelect}
-                    formatFileSize={formatFileSize}
-                    formatDate={formatDate}
-                    getFileIcon={getFileIcon}
-                    showDeleteConfirm={showDeleteConfirm}
-                    setShowDeleteConfirm={setShowDeleteConfirm}
-                    handleDeleteConfirm={handleDeleteConfirm}
-                    expandedHistory={expandedHistory}
-                    setExpandedHistory={setExpandedHistory}
-                  />
+                  {isGenerating && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center">
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Sparkles className="w-4 h-4 text-violet-500 animate-pulse" />
+                        Regenerating...
+                      </div>
+                    </div>
+                  )}
                 </div>
-              );
-            })}
-          </div>
+
+                <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  {channel === 'whatsapp'
+                    ? 'WhatsApp messages are concise for mobile reading'
+                    : 'Email messages are formal for professional communication'
+                  }
+                </p>
+              </div>
+            </>
+          )}
         </div>
+
+        {/* Footer - Only in Request View */}
+        {currentView === 'request' && (
+          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
+            <button
+              onClick={() => setCurrentView('details')}
+              className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-all"
+            >
+              Back
+            </button>
+            <button
+              onClick={handleSend}
+              disabled={isSending}
+              className={cn(
+                'flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all',
+                channel === 'whatsapp'
+                  ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                  : 'bg-[#0E4369] text-white hover:bg-[#0B3654]',
+                isSending && 'opacity-70 cursor-not-allowed'
+              )}
+            >
+              {isSending ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Send via {channel === 'whatsapp' ? 'WhatsApp' : 'Email'}
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Animation styles */}
+      <style jsx>{`
+        @keyframes modalSlideIn {
+          from {
+            opacity: 0;
+            transform: scale(0.96) translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 }
@@ -447,7 +811,6 @@ function DocumentTypeCard({
 }: DocumentTypeCardProps) {
   const isHistoryExpanded = expandedHistory === type.typeId;
 
-  // Get overall status from all documents
   const hasIssues = uploadedDocs.some(doc =>
     doc.pipelineStatus === 'quality_issue' || doc.pipelineStatus === 'conflict'
   );
@@ -515,7 +878,6 @@ function DocumentTypeCard({
               <div key={uploadedDoc.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                 <div className="p-3">
                   <div className="flex items-center gap-3">
-                    {/* Thumbnail */}
                     <div
                       className="w-12 h-14 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-[#0E4369]/20 transition-all group overflow-hidden"
                       onClick={() => onPreview(uploadedDoc.id)}
@@ -534,7 +896,6 @@ function DocumentTypeCard({
                       )}
                     </div>
 
-                    {/* File Details */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="font-medium text-gray-900 text-sm truncate">
@@ -551,7 +912,6 @@ function DocumentTypeCard({
                       </div>
                     </div>
 
-                    {/* Actions */}
                     <button
                       onClick={() => onPreview(uploadedDoc.id)}
                       className="px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
@@ -561,14 +921,12 @@ function DocumentTypeCard({
                   </div>
                 </div>
 
-                {/* Pipeline Status */}
                 {uploadedDoc.pipelineStatus && uploadedDoc.pipelineStatus !== 'ready' && (
                   <div className="px-3 pb-3">
                     <DocumentPipeline status={uploadedDoc.pipelineStatus} compact />
                   </div>
                 )}
 
-                {/* Quality Issues */}
                 {(uploadedDoc.pipelineStatus === 'quality_issue' || uploadedDoc.pipelineStatus === 'conflict') &&
                  uploadedDoc.qualityCheck?.issues && (
                   <div className="mx-3 mb-3 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
@@ -585,7 +943,6 @@ function DocumentTypeCard({
               </div>
             ))}
 
-            {/* Action Bar - for adding more files */}
             <div className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-between">
               <button
                 onClick={() => setExpandedHistory(isHistoryExpanded ? null : type.typeId)}
@@ -644,7 +1001,6 @@ function DocumentTypeCard({
               </div>
             </label>
 
-            {/* Requirements */}
             {type.requirements.length > 0 && (
               <div className="mt-3 p-3 bg-gray-50 rounded-lg">
                 <h5 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">

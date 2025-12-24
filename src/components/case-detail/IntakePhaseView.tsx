@@ -236,8 +236,14 @@ export function IntakePhaseView({
           onPreview={handlePreview}
           onRemove={onRemove}
           onUpload={handleSlotUpload}
-          onSendRequest={(slotId) => handleRequestDocuments([slotId])}
+          onSendRequest={(slotId, channel, message) => {
+            onSendRequest([slotId], channel, message);
+          }}
           onResolveIssue={onResolveIssue}
+          applicantName={applicantName}
+          applicantEmail={applicantEmail}
+          applicantPhone={applicantPhone}
+          caseReference={caseReference}
         />
       )}
 
