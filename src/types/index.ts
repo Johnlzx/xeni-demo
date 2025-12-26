@@ -111,6 +111,13 @@ export interface PipelineEvent {
   triggeredBy?: 'system' | 'user';
 }
 
+/**
+ * Document Repository - 文档仓库类型
+ * - original: 原始证据 (客户上传的原始文件)
+ * - verified: 已验证文档 (经过处理、格式检查后的文件)
+ */
+export type DocumentRepository = 'original' | 'verified';
+
 export interface Document {
   id: string;
   caseId: string;
@@ -138,6 +145,9 @@ export interface Document {
   pipelineStatus: DocumentPipelineStatus;  // 当前管道状态
   pipelineHistory?: PipelineEvent[];       // 管道历史记录
   standardizedPdfUrl?: string;             // 标准化后的 PDF URL
+
+  // 文档仓库字段
+  repository?: DocumentRepository;         // 文档仓库 (默认 'original')
 }
 
 // ============================================

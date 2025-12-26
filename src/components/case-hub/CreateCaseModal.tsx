@@ -3,10 +3,10 @@
 import { useState, useCallback } from 'react';
 import { Modal, Button, Input, Select } from '@/components/ui';
 import { PassportInfoCard } from './PassportInfoCard';
-import { MultiFileUploader, FileMergeSelector } from '@/components/upload';
-import { Globe, Hash, User, Mail, Upload, FileText, CheckCircle, ArrowRight } from 'lucide-react';
+import { Globe, Hash, User, Mail, Upload, FileText, CheckCircle, X } from 'lucide-react';
 import { VISA_TYPES } from '@/data/constants';
 import { MOCK_USERS } from '@/data/users';
+import { cn, formatFileSize } from '@/lib/utils';
 import type { PassportInfo, VisaType } from '@/types';
 
 interface CreateCaseModalProps {
@@ -53,8 +53,7 @@ export function CreateCaseModal({ isOpen, onClose, onSubmit }: CreateCaseModalPr
   const [isUploading, setIsUploading] = useState(false);
   const [passportData, setPassportData] = useState<PassportInfo | null>(null);
   const [supportingFiles, setSupportingFiles] = useState<UploadedFile[]>([]);
-  const [showMergeSelector, setShowMergeSelector] = useState(false);
-  const [selectedMergeIds, setSelectedMergeIds] = useState<string[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [formData, setFormData] = useState({
     visaType: '' as VisaType | '',
     referenceNumber: '',
@@ -102,8 +101,6 @@ export function CreateCaseModal({ isOpen, onClose, onSubmit }: CreateCaseModalPr
     setStep('upload');
     setPassportData(null);
     setSupportingFiles([]);
-    setShowMergeSelector(false);
-    setSelectedMergeIds([]);
     setFormData({
       visaType: '',
       referenceNumber: '',
@@ -114,36 +111,33 @@ export function CreateCaseModal({ isOpen, onClose, onSubmit }: CreateCaseModalPr
     onClose();
   };
 
-  const handleMergeRequest = useCallback((fileIds: string[]) => {
-    setSelectedMergeIds(fileIds);
-    setShowMergeSelector(true);
+  // Simple file upload handlers
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    addFiles(files);
   }, []);
 
-  const handleMerge = useCallback(async (orderedIds: string[], mergedFileName: string) => {
-    // Simulate merge - in a real app, this would call a backend API
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer.files);
+    addFiles(files);
+  }, []);
 
-    // Create a merged file entry
-    const mergedFiles = orderedIds
-      .map((id) => supportingFiles.find((f) => f.id === id))
-      .filter(Boolean) as UploadedFile[];
-
-    const mergedFile: UploadedFile = {
+  const addFiles = (files: File[]) => {
+    const newFiles: UploadedFile[] = files.map(file => ({
       id: Math.random().toString(36).substring(2, 11),
-      file: mergedFiles[0].file, // In reality, this would be the merged PDF
-      name: mergedFileName, // Use the user-provided or AI-suggested file name
-      size: mergedFiles.reduce((acc, f) => acc + f.size, 0),
-      type: 'application/pdf',
-    };
+      file,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    }));
+    setSupportingFiles(prev => [...prev, ...newFiles]);
+  };
 
-    // Remove original files and add merged file
-    setSupportingFiles((prev) => [
-      ...prev.filter((f) => !orderedIds.includes(f.id)),
-      mergedFile,
-    ]);
-    setShowMergeSelector(false);
-    setSelectedMergeIds([]);
-  }, [supportingFiles]);
+  const removeFile = (fileId: string) => {
+    setSupportingFiles(prev => prev.filter(f => f.id !== fileId));
+  };
 
   const isFormValid = passportData && formData.visaType && formData.referenceNumber;
 
@@ -276,7 +270,7 @@ export function CreateCaseModal({ isOpen, onClose, onSubmit }: CreateCaseModalPr
 
             <Select
               label="Assistant"
-              placeholder="Select client's nationality"
+              placeholder="Select assistant"
               options={[{ value: '', label: 'None' }, ...userOptions]}
               value={formData.assistantId}
               onChange={(value) => setFormData({ ...formData, assistantId: value })}
@@ -296,44 +290,83 @@ export function CreateCaseModal({ isOpen, onClose, onSubmit }: CreateCaseModalPr
 
       {step === 'documents' && (
         <div className="py-4">
-          {showMergeSelector ? (
-            <FileMergeSelector
-              files={supportingFiles.map((f) => ({
-                id: f.id,
-                name: f.name,
-                size: f.size,
-                type: f.type,
-              }))}
-              selectedIds={selectedMergeIds}
-              onSelectionChange={setSelectedMergeIds}
-              onMerge={handleMerge}
-              onCancel={() => {
-                setShowMergeSelector(false);
-                setSelectedMergeIds([]);
-              }}
-            />
-          ) : (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                Upload any supporting documents for this case. You can select multiple PDFs to merge them into a single document.
-              </p>
-              <MultiFileUploader
-                files={supportingFiles}
-                onFilesChange={setSupportingFiles}
-                onMergeRequest={handleMergeRequest}
-                maxFiles={20}
-                maxFileSize={20 * 1024 * 1024}
-                acceptedTypes={['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx']}
-                label="Supporting Documents"
-                description="Upload employment letters, bank statements, etc."
-              />
-              {supportingFiles.length === 0 && (
-                <p className="text-xs text-gray-400 text-center">
-                  You can skip this step and add documents later
-                </p>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Upload any supporting documents for this case.
+            </p>
+
+            {/* Simple Drop Zone */}
+            <div
+              className={cn(
+                'border-2 border-dashed rounded-xl p-6 text-center transition-all',
+                isDragging
+                  ? 'border-[#0E4369] bg-[#0E4369]/5'
+                  : 'border-gray-200 hover:border-gray-300'
               )}
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+            >
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                className="hidden"
+                id="document-upload"
+                onChange={handleFileSelect}
+              />
+              <label htmlFor="document-upload" className="cursor-pointer">
+                <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                  <Upload className="w-5 h-5 text-gray-400" />
+                </div>
+                <p className="text-sm font-medium text-gray-700 mb-1">
+                  Drop files here or click to browse
+                </p>
+                <p className="text-xs text-gray-500">
+                  PDF, JPG, PNG, DOC (max 20MB each)
+                </p>
+              </label>
             </div>
-          )}
+
+            {/* File List */}
+            {supportingFiles.length > 0 && (
+              <div className="space-y-2 mt-4">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  Uploaded files ({supportingFiles.length})
+                </p>
+                {supportingFiles.map((file) => (
+                  <div
+                    key={file.id}
+                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl group"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-white border border-gray-200 flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {file.name}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {formatFileSize(file.size)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => removeFile(file.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {supportingFiles.length === 0 && (
+              <p className="text-xs text-gray-400 text-center">
+                You can skip this step and add documents later
+              </p>
+            )}
+          </div>
         </div>
       )}
     </Modal>

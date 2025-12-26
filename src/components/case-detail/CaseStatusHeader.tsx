@@ -1,13 +1,10 @@
 'use client';
 
-import { ArrowLeft, Globe } from 'lucide-react';
+import { ChevronDown, Archive, List, Maximize2 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
-import { IssueCounter } from './IssueCounter';
-import { PassportButton } from './PassportButton';
 import type { Case, Issue, Document } from '@/types';
 import { VISA_TYPES } from '@/data/constants';
-import { formatDate } from '@/lib/utils';
 
 interface CaseStatusHeaderProps {
   caseData: Case;
@@ -16,6 +13,10 @@ interface CaseStatusHeaderProps {
   onSlotJump?: (slotId: string) => void;
   /** Demo mode: callback to simulate resolving an issue */
   onDemoResolveIssue?: (issueId: string) => void;
+  /** Callback for toggling reference panel */
+  onToggleReferencePanel?: () => void;
+  /** Whether reference panel is open */
+  isReferencePanelOpen?: boolean;
   className?: string;
 }
 
@@ -25,60 +26,72 @@ export function CaseStatusHeader({
   issues,
   onSlotJump,
   onDemoResolveIssue,
+  onToggleReferencePanel,
+  isReferencePanelOpen,
   className,
 }: CaseStatusHeaderProps) {
   const visaConfig = VISA_TYPES[caseData.visaType];
-  const totalIssues = issues.filter((i) => i.status === 'open').length;
-
-  // Find the passport document for preview
-  const passportDocument = documents.find(
-    d => d.documentTypeId === 'passport' || d.name?.toLowerCase().includes('passport')
-  );
+  const applicantFullName = `${caseData.applicant.passport.givenNames} ${caseData.applicant.passport.surname}`.toUpperCase();
 
   return (
     <div className={cn('bg-white border-b border-gray-200', className)}>
-      {/* Single Row: Navigation + Passport + Info + Issue Counter + Actions */}
-      <div className="px-6 py-3">
+      <div className="px-6 py-3.5">
         <div className="flex items-center justify-between">
-          {/* Left: Navigation + Passport Button + Case Info */}
-          <div className="flex items-center gap-4">
+          {/* Left: Breadcrumb Navigation */}
+          <div className="flex items-center gap-2 min-w-0">
             <Link
               href="/cases"
-              className="flex items-center gap-1.5 text-gray-500 hover:text-gray-700 transition-colors"
+              className="text-sm text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span className="text-sm font-medium">Cases</span>
+              Cases
             </Link>
-            <div className="w-px h-5 bg-gray-200" />
+            <span className="text-gray-300 flex-shrink-0">›</span>
+            <h1 className="text-sm font-medium text-gray-900 truncate">
+              {applicantFullName}'s {visaConfig.label}
+            </h1>
 
-            {/* Passport Button - Primary Identity */}
-            <PassportButton
-              passport={caseData.applicant.passport}
-              passportDocument={passportDocument}
-            />
+            {/* Status Badge */}
+            <span className="ml-2 inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium flex-shrink-0">
+              Intake
+            </span>
 
-            <div className="w-px h-5 bg-gray-200" />
-            <span className="text-sm font-mono text-gray-500">
-              {caseData.referenceNumber}
-            </span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">
-              <Globe className="w-3 h-3" />
-              {visaConfig.label}
-            </span>
-            <span className="text-xs text-gray-400">
-              {formatDate(caseData.createdAt, 'short')} · {caseData.advisor.name}
-            </span>
+            {/* Dropdown Arrow */}
+            <button className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors flex-shrink-0">
+              <ChevronDown className="w-4 h-4" />
+            </button>
           </div>
 
-          {/* Right: Issue Counter + Launch Button */}
-          <div className="flex items-center gap-3">
-            {/* Unified Issue Counter */}
-            <IssueCounter
-              issues={issues}
-              onSlotJump={onSlotJump}
-              onDemoResolve={onDemoResolveIssue}
-            />
+          {/* Right: Action Icons */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {/* Reference Panel Toggle (Box/Archive Icon) */}
+            <button
+              onClick={onToggleReferencePanel}
+              className={cn(
+                'p-2.5 rounded-lg transition-all duration-150',
+                isReferencePanelOpen
+                  ? 'bg-[#0E4369]/10 text-[#0E4369]'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              )}
+              title="Toggle reference panel"
+            >
+              <Archive className="w-5 h-5" />
+            </button>
 
+            {/* List View Icon */}
+            <button
+              className="p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              title="List view"
+            >
+              <List className="w-5 h-5" />
+            </button>
+
+            {/* Expand Icon */}
+            <button
+              className="p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Expand"
+            >
+              <Maximize2 className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </div>

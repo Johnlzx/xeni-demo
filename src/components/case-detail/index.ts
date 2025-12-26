@@ -13,3 +13,15 @@ export { CompliancePhaseView } from './CompliancePhaseView';
 export { SchemaPreviewWall } from './SchemaPreviewWall';
 export { ReadyPhaseView } from './ReadyPhaseView';
 export { PhaseTransition } from './PhaseTransition';
+export { StatCards } from './StatCards';
+export { ReferencePanel } from './ReferencePanel';
+export { ActionBar } from './ActionBar';
+export {
+  MergeSuggestionCard,
+  MergeSuggestionsHeader,
+  NoMergeSuggestions,
+} from './MergeSuggestionCard';
+export { DocumentDetailModal } from './DocumentDetailModal';
+export { IssueWorkspace } from './IssueWorkspace';
+export { ClientNoteModal } from './ClientNoteModal';
+export { CaseDashboard } from './CaseDashboard';
