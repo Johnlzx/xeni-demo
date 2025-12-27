@@ -25,3 +25,11 @@ export { DocumentDetailModal } from './DocumentDetailModal';
 export { IssueWorkspace } from './IssueWorkspace';
 export { ClientNoteModal } from './ClientNoteModal';
 export { CaseDashboard } from './CaseDashboard';
+export { IssueDetailView } from './IssueDetailView';
+export { RequestActivitySidebar } from './RequestActivitySidebar';
+
+// Checklist Navigation Components
+export { ChecklistNavigation } from './ChecklistNavigation';
+export { SectionContentArea } from './SectionContentArea';
+export { FileTagsBar } from './FileTagsBar';
+export { SectionEmptyState } from './SectionEmptyState';

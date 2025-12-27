@@ -7,8 +7,14 @@ import {
   ReferencePanel,
   ActionBar,
   DocumentDetailModal,
-  IssueWorkspace,
+  ChecklistNavigation,
+  SectionContentArea,
+  ClientNoteModal,
+  IssueDetailView,
+  RequestActivitySidebar,
 } from '@/components/case-detail';
+import type { ClientRequest } from '@/components/case-detail/RequestActivitySidebar';
+import { getEvidenceTemplateForVisaType } from '@/data/evidence-templates';
 import { getCaseById } from '@/data/cases';
 import { getDocumentsByCaseId } from '@/data/documents';
 import { getIssuesByCaseId } from '@/data/issues';
@@ -23,7 +29,7 @@ export default function CaseDetailPage() {
   const params = useParams();
   const caseId = params.caseId as string;
   const caseData = getCaseById(caseId);
-  const [isReferencePanelOpen, setIsReferencePanelOpen] = useState(true);
+  const [isReferencePanelOpen, setIsReferencePanelOpen] = useState(false);
 
   // Demo mode: track resolved issues
   const [demoResolvedIssues, setDemoResolvedIssues] = useState<Set<string>>(new Set());
@@ -34,6 +40,19 @@ export default function CaseDetailPage() {
   // Document detail modal state
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
+
+  // Checklist navigation state
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+
+  // Issue detail view state
+  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+
+  // Client note modal state
+  const [isClientNoteModalOpen, setIsClientNoteModalOpen] = useState(false);
+  const [clientNoteIssueIds, setClientNoteIssueIds] = useState<string[]>([]);
+
+  // Request tracking state - Map of issueId to ClientRequest
+  const [issueRequests, setIssueRequests] = useState<Map<string, ClientRequest>>(new Map());
 
   if (!caseData) {
     notFound();
@@ -51,6 +70,39 @@ export default function CaseDetailPage() {
         : issue
     );
   }, [rawIssues, demoResolvedIssues]);
+
+  // Get evidence slot templates for this visa type
+  const evidenceSlots = useMemo(() => {
+    return getEvidenceTemplateForVisaType(caseData.visaType);
+  }, [caseData.visaType]);
+
+  // Default section selection: first section with open issues, or first required section
+  useEffect(() => {
+    if (!selectedSectionId && evidenceSlots.length > 0) {
+      const firstWithIssue = evidenceSlots.find(slot =>
+        issues.some(i => i.targetSlotId === slot.id && i.status === 'open')
+      );
+      const firstRequired = evidenceSlots.find(s => s.priority === 'required');
+      setSelectedSectionId(firstWithIssue?.id || firstRequired?.id || evidenceSlots[0].id);
+    }
+  }, [evidenceSlots, issues, selectedSectionId]);
+
+  // Filter documents by selected section
+  const sectionDocuments = useMemo(() => {
+    if (!selectedSectionId) return documents;
+    return documents.filter(d => d.assignedToSlots?.includes(selectedSectionId));
+  }, [documents, selectedSectionId]);
+
+  // Filter issues by selected section
+  const sectionIssues = useMemo(() => {
+    if (!selectedSectionId) return issues;
+    return issues.filter(i => i.targetSlotId === selectedSectionId);
+  }, [issues, selectedSectionId]);
+
+  // Get the currently selected section
+  const selectedSection = useMemo(() => {
+    return evidenceSlots.find(s => s.id === selectedSectionId) || null;
+  }, [evidenceSlots, selectedSectionId]);
 
   // Run merge detection and auto-accept when documents change
   useEffect(() => {
@@ -244,6 +296,177 @@ export default function CaseDetailPage() {
     handleLaunchFormPilot();
   }, []);
 
+  // Handle opening client note modal with selected issues
+  const handleRequestClient = useCallback((issueIds: string[]) => {
+    setClientNoteIssueIds(issueIds);
+    setIsClientNoteModalOpen(true);
+  }, []);
+
+  const handleCloseClientNoteModal = useCallback(() => {
+    setIsClientNoteModalOpen(false);
+    setClientNoteIssueIds([]);
+  }, []);
+
+  const handleSendClientNote = useCallback(
+    (channel: 'whatsapp' | 'email', message: string) => {
+      console.log(`Sending via ${channel}:`, message);
+
+      // Create request records for each issue
+      const now = new Date();
+      const newRequests = new Map(issueRequests);
+
+      clientNoteIssueIds.forEach(issueId => {
+        const request: ClientRequest = {
+          id: `req-${issueId}-${Date.now()}`,
+          issueId,
+          channel,
+          message,
+          status: 'sent',
+          createdAt: now,
+          events: [
+            {
+              id: `evt-${Date.now()}-1`,
+              type: 'sent',
+              timestamp: now,
+              channel,
+            },
+          ],
+        };
+        newRequests.set(issueId, request);
+      });
+
+      setIssueRequests(newRequests);
+
+      // Simulate delivery after 2 seconds (demo)
+      setTimeout(() => {
+        setIssueRequests(prev => {
+          const updated = new Map(prev);
+          clientNoteIssueIds.forEach(issueId => {
+            const existing = updated.get(issueId);
+            if (existing && existing.status === 'sent') {
+              updated.set(issueId, {
+                ...existing,
+                status: 'delivered',
+                events: [
+                  ...existing.events,
+                  {
+                    id: `evt-${Date.now()}-del`,
+                    type: 'delivered',
+                    timestamp: new Date(),
+                  },
+                ],
+              });
+            }
+          });
+          return updated;
+        });
+      }, 2000);
+
+      // Simulate client viewing after 5 seconds (demo)
+      setTimeout(() => {
+        setIssueRequests(prev => {
+          const updated = new Map(prev);
+          clientNoteIssueIds.forEach(issueId => {
+            const existing = updated.get(issueId);
+            if (existing && existing.status === 'delivered') {
+              updated.set(issueId, {
+                ...existing,
+                status: 'viewed',
+                events: [
+                  ...existing.events,
+                  {
+                    id: `evt-${Date.now()}-view`,
+                    type: 'viewed',
+                    timestamp: new Date(),
+                  },
+                ],
+              });
+            }
+          });
+          return updated;
+        });
+      }, 5000);
+
+      setIsClientNoteModalOpen(false);
+      setClientNoteIssueIds([]);
+    },
+    [clientNoteIssueIds, issueRequests]
+  );
+
+  // Handle resend request
+  const handleResendRequest = useCallback(() => {
+    if (selectedIssueId) {
+      // Re-open the modal to send a new request
+      setClientNoteIssueIds([selectedIssueId]);
+      setIsClientNoteModalOpen(true);
+    }
+  }, [selectedIssueId]);
+
+  // Handle send reminder
+  const handleSendReminder = useCallback(() => {
+    if (selectedIssueId) {
+      const existing = issueRequests.get(selectedIssueId);
+      if (existing) {
+        const updated: ClientRequest = {
+          ...existing,
+          events: [
+            ...existing.events,
+            {
+              id: `evt-${Date.now()}-rem`,
+              type: 'reminder_sent',
+              timestamp: new Date(),
+              message: 'Reminder sent to client',
+            },
+          ],
+        };
+        setIssueRequests(prev => {
+          const newMap = new Map(prev);
+          newMap.set(selectedIssueId, updated);
+          return newMap;
+        });
+      }
+    }
+  }, [selectedIssueId, issueRequests]);
+
+  // Get active request for selected issue
+  const activeRequestForIssue = useMemo(() => {
+    if (!selectedIssueId) return null;
+    return issueRequests.get(selectedIssueId) || null;
+  }, [selectedIssueId, issueRequests]);
+
+  // Get issues for the client note modal
+  const clientNoteIssues = useMemo(() => {
+    return issues.filter(i => clientNoteIssueIds.includes(i.id));
+  }, [issues, clientNoteIssueIds]);
+
+  // Get the selected issue for detail view
+  const selectedIssue = useMemo(() => {
+    if (!selectedIssueId) return null;
+    return issues.find(i => i.id === selectedIssueId) || null;
+  }, [issues, selectedIssueId]);
+
+  // Handle selecting an issue to view details
+  const handleSelectIssue = useCallback((issueId: string) => {
+    setSelectedIssueId(issueId);
+  }, []);
+
+  // Handle going back from issue detail
+  const handleBackFromIssue = useCallback(() => {
+    setSelectedIssueId(null);
+  }, []);
+
+  // Handle resolve issue from detail view
+  const handleResolveIssueFromDetail = useCallback((issueId: string) => {
+    handleDemoResolveIssue(issueId);
+    // Optionally go back after resolving
+    setSelectedIssueId(null);
+  }, [handleDemoResolveIssue]);
+
+  // Clear selected issue when section changes
+  useEffect(() => {
+    setSelectedIssueId(null);
+  }, [selectedSectionId]);
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Status Header */}
@@ -256,24 +479,51 @@ export default function CaseDetailPage() {
         isReferencePanelOpen={isReferencePanelOpen}
       />
 
-      {/* Main Layout - Content + Reference Panel */}
+      {/* Main Layout - Checklist Nav + Content + Reference Panel */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Main Content Area - Issue Workspace */}
-        <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
-          <IssueWorkspace
-            issues={issues}
-            documents={documents}
-            onResolveIssue={handleDemoResolveIssue}
-            onPreviewDocument={handlePreview}
-          />
+        {/* Checklist Navigation - Left Sidebar */}
+        <ChecklistNavigation
+          visaType={caseData.visaType}
+          documents={documents}
+          issues={issues}
+          selectedSectionId={selectedSectionId}
+          onSelectSection={setSelectedSectionId}
+        />
 
-          {/* Action Bar */}
-          <div className="bg-white border-t border-gray-100">
-            <ActionBar
-              onAddReference={handleAddReference}
-              onStartAutoFill={handleStartAutoFill}
+        {/* Section Content Area or Issue Detail View */}
+        <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
+          {selectedIssue ? (
+            <IssueDetailView
+              issue={selectedIssue}
+              documents={documents}
+              onBack={handleBackFromIssue}
+              onRequestClient={handleRequestClient}
+              onPreviewDocument={handlePreview}
+              activeRequest={activeRequestForIssue}
+              onResendRequest={handleResendRequest}
+              onSendReminder={handleSendReminder}
             />
-          </div>
+          ) : (
+            <>
+              <SectionContentArea
+                section={selectedSection}
+                documents={sectionDocuments}
+                issues={sectionIssues}
+                onPreviewDocument={handlePreview}
+                onResolveIssue={handleDemoResolveIssue}
+                onRequestClient={handleRequestClient}
+                onSelectIssue={handleSelectIssue}
+              />
+
+              {/* Action Bar */}
+              <div className="bg-white border-t border-gray-100">
+                <ActionBar
+                  onAddReference={handleAddReference}
+                  onStartAutoFill={handleStartAutoFill}
+                />
+              </div>
+            </>
+          )}
         </div>
 
         {/* Reference Panel (Push-style Sidebar) */}
@@ -294,6 +544,15 @@ export default function CaseDetailPage() {
         document={selectedDocument}
         sourceFiles={sourceFilesForModal}
         onViewOriginal={handleViewOriginalFile}
+        issues={issues}
+      />
+
+      {/* Client Note Modal */}
+      <ClientNoteModal
+        isOpen={isClientNoteModalOpen}
+        onClose={handleCloseClientNoteModal}
+        issues={clientNoteIssues}
+        onSend={handleSendClientNote}
       />
     </div>
   );

@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
   FileText,
   CheckCircle2,
   Clock,
   AlertTriangle,
+  AlertCircle,
   Shield,
   Download,
   ZoomIn,
@@ -16,9 +18,11 @@ import {
   Sparkles,
   FileCheck,
   Layers,
+  Info,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Document, DocumentPipelineStatus } from '@/types';
+import type { Document, DocumentPipelineStatus, Issue } from '@/types';
 
 interface SourceFile {
   id: string;
@@ -30,13 +34,21 @@ interface DocumentDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   document: Document | null;
-  // For merged documents - source files
   sourceFiles?: SourceFile[];
-  // Handler to view original evidence
   onViewOriginal?: (fileId: string) => void;
+  // New: issues related to this document
+  issues?: Issue[];
 }
 
-// Pipeline stages in order
+// Mock issue location data - maps issue IDs to document locations
+const ISSUE_LOCATIONS: Record<string, { line: number; field: string; highlightText: string }> = {
+  'issue-001': { line: 3, field: 'Photo Area', highlightText: 'Photo Area' },
+  'issue-002': { line: 8, field: 'Date of Birth', highlightText: '15 MAR 1985' },
+  'issue-003': { line: 12, field: 'Salary Line', highlightText: '£82,000' },
+  'issue-004': { line: 5, field: 'Account Balance', highlightText: '£24,521.45' },
+};
+
+// Pipeline stages
 const PIPELINE_STAGES: { status: DocumentPipelineStatus; label: string; icon: typeof Clock }[] = [
   { status: 'uploading', label: 'Upload', icon: Clock },
   { status: 'processing', label: 'Processing', icon: Sparkles },
@@ -77,6 +89,35 @@ function formatFileSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function getSeverityConfig(severity: Issue['severity']) {
+  switch (severity) {
+    case 'error':
+      return {
+        icon: AlertTriangle,
+        color: 'text-rose-600',
+        bg: 'bg-rose-50',
+        border: 'border-rose-200',
+        ring: 'ring-rose-400',
+      };
+    case 'warning':
+      return {
+        icon: AlertCircle,
+        color: 'text-amber-600',
+        bg: 'bg-amber-50',
+        border: 'border-amber-200',
+        ring: 'ring-amber-400',
+      };
+    default:
+      return {
+        icon: Info,
+        color: 'text-sky-600',
+        bg: 'bg-sky-50',
+        border: 'border-sky-200',
+        ring: 'ring-sky-400',
+      };
+  }
+}
+
 /**
  * Pipeline Progress - Compact horizontal
  */
@@ -115,26 +156,264 @@ function PipelineProgress({ currentStatus }: { currentStatus: DocumentPipelineSt
 }
 
 /**
- * High-Fidelity PDF Preview Mock
- * Simulates a real PDF document with realistic content
+ * Issue Highlight Overlay - Animated highlight on document
+ */
+function IssueHighlight({
+  issue,
+  isActive,
+  position,
+}: {
+  issue: Issue;
+  isActive: boolean;
+  position: { top: number; left: number; width: number; height: number };
+}) {
+  const severity = getSeverityConfig(issue.severity);
+
+  if (!isActive) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      className="absolute pointer-events-none"
+      style={{
+        top: position.top,
+        left: position.left,
+        width: position.width,
+        height: position.height,
+      }}
+    >
+      {/* Pulsing ring effect */}
+      <motion.div
+        className={cn('absolute inset-0 rounded', severity.bg)}
+        initial={{ opacity: 0.6 }}
+        animate={{ opacity: [0.6, 0.3, 0.6] }}
+        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      {/* Border highlight */}
+      <motion.div
+        className={cn('absolute inset-0 rounded ring-2', severity.ring)}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+      />
+    </motion.div>
+  );
+}
+
+/**
+ * Issue Annotation Card - Floating card next to highlight
+ */
+function IssueAnnotation({
+  issue,
+  isActive,
+  position,
+  onClose,
+}: {
+  issue: Issue;
+  isActive: boolean;
+  position: { top: number; right: number };
+  onClose: () => void;
+}) {
+  const severity = getSeverityConfig(issue.severity);
+  const Icon = severity.icon;
+
+  if (!isActive) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20, scale: 0.9 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, x: 20, scale: 0.9 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 30, delay: 0.1 }}
+      className={cn(
+        'absolute z-30 w-64 p-3 rounded-lg shadow-xl border',
+        'bg-white/95 backdrop-blur-sm',
+        severity.border
+      )}
+      style={{
+        top: position.top,
+        right: position.right,
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-start gap-2 mb-2">
+        <div className={cn('p-1.5 rounded', severity.bg)}>
+          <Icon className={cn('w-3.5 h-3.5', severity.color)} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-slate-900 leading-tight">
+            {issue.title}
+          </p>
+          <p className="text-[10px] text-slate-500 mt-0.5">
+            {issue.type === 'quality' ? 'Quality Issue' : 'Compliance Issue'}
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1 -mr-1 -mt-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
+        >
+          <X className="w-3 h-3" />
+        </button>
+      </div>
+
+      {/* Description */}
+      <p className="text-[11px] text-slate-600 leading-relaxed mb-2">
+        {issue.description}
+      </p>
+
+      {/* AI Recommendation */}
+      {issue.aiRecommendation && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          transition={{ delay: 0.2 }}
+          className="pt-2 border-t border-slate-100"
+        >
+          <div className="flex items-center gap-1 mb-1">
+            <Sparkles className="w-3 h-3 text-slate-400" />
+            <span className="text-[10px] font-medium text-slate-500">AI Suggestion</span>
+          </div>
+          <p className="text-[10px] text-slate-500 leading-relaxed">
+            {issue.aiRecommendation.message}
+          </p>
+        </motion.div>
+      )}
+    </motion.div>
+  );
+}
+
+/**
+ * Issue Navigator - Sidebar list of issues
+ */
+function IssueNavigator({
+  issues,
+  activeIssueId,
+  onSelectIssue,
+}: {
+  issues: Issue[];
+  activeIssueId: string | null;
+  onSelectIssue: (issueId: string | null) => void;
+}) {
+  if (issues.length === 0) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: 0.3 }}
+      className="absolute right-4 top-4 w-56 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-slate-200 overflow-hidden z-20"
+    >
+      {/* Header */}
+      <div className="px-3 py-2 bg-slate-50 border-b border-slate-100">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+          <span className="text-xs font-semibold text-slate-700">
+            {issues.length} Issue{issues.length > 1 ? 's' : ''} Found
+          </span>
+        </div>
+      </div>
+
+      {/* Issue List */}
+      <div className="max-h-64 overflow-y-auto">
+        {issues.map((issue, index) => {
+          const severity = getSeverityConfig(issue.severity);
+          const Icon = severity.icon;
+          const isActive = activeIssueId === issue.id;
+
+          return (
+            <motion.button
+              key={issue.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 + index * 0.05 }}
+              onClick={() => onSelectIssue(isActive ? null : issue.id)}
+              className={cn(
+                'w-full text-left px-3 py-2.5 border-b border-slate-100 last:border-0',
+                'transition-all duration-200',
+                isActive
+                  ? cn(severity.bg, 'border-l-2', severity.border.replace('border-', 'border-l-'))
+                  : 'hover:bg-slate-50'
+              )}
+            >
+              <div className="flex items-start gap-2">
+                <Icon className={cn('w-3.5 h-3.5 mt-0.5 flex-shrink-0', severity.color)} />
+                <div className="flex-1 min-w-0">
+                  <p className={cn(
+                    'text-xs font-medium leading-tight truncate',
+                    isActive ? 'text-slate-900' : 'text-slate-700'
+                  )}>
+                    {issue.title}
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                    {issue.type === 'quality' ? 'Quality' : 'Compliance'}
+                  </p>
+                </div>
+                {isActive && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="w-1.5 h-1.5 rounded-full bg-slate-900 mt-1.5"
+                  />
+                )}
+              </div>
+            </motion.button>
+          );
+        })}
+      </div>
+
+      {/* Footer hint */}
+      <div className="px-3 py-2 bg-slate-50 border-t border-slate-100">
+        <p className="text-[10px] text-slate-400 text-center">
+          Click issue to locate in document
+        </p>
+      </div>
+    </motion.div>
+  );
+}
+
+/**
+ * High-Fidelity PDF Preview with Issue Highlighting
  */
 function PdfPreviewMock({
   documentName,
   documentType,
   isOriginal = false,
+  issues = [],
+  activeIssueId,
+  onClearActiveIssue,
 }: {
   documentName: string;
   documentType?: string;
   isOriginal?: boolean;
+  issues?: Issue[];
+  activeIssueId: string | null;
+  onClearActiveIssue: () => void;
 }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [zoom, setZoom] = useState(100);
+  const contentRef = useRef<HTMLDivElement>(null);
   const totalPages = 2;
 
   // Determine document content based on type
   const isPassport = documentName.toLowerCase().includes('passport');
   const isBankStatement = documentName.toLowerCase().includes('bank') || documentName.toLowerCase().includes('statement');
   const isEmployment = documentName.toLowerCase().includes('employment') || documentName.toLowerCase().includes('letter');
+
+  // Get active issue
+  const activeIssue = issues.find(i => i.id === activeIssueId) || null;
+  const activeLocation = activeIssueId ? ISSUE_LOCATIONS[activeIssueId] : null;
+
+  // Scroll to highlighted area when issue is selected
+  useEffect(() => {
+    if (activeIssueId && contentRef.current) {
+      const highlightElement = contentRef.current.querySelector('[data-issue-highlight="true"]');
+      if (highlightElement) {
+        highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [activeIssueId]);
 
   return (
     <div className="flex flex-col h-full">
@@ -184,9 +463,9 @@ function PdfPreviewMock({
       </div>
 
       {/* PDF Content Area */}
-      <div className="flex-1 bg-slate-700 p-4 overflow-auto rounded-b-lg">
+      <div className="flex-1 bg-slate-700 p-4 overflow-auto rounded-b-lg relative" ref={contentRef}>
         <div
-          className="mx-auto bg-white shadow-2xl transition-transform origin-top"
+          className="mx-auto bg-white shadow-2xl transition-transform origin-top relative"
           style={{
             width: `${(595 * zoom) / 100}px`,
             minHeight: `${(842 * zoom) / 100}px`,
@@ -197,22 +476,105 @@ function PdfPreviewMock({
           {/* Paper content */}
           <div className="p-8 font-serif text-sm leading-relaxed text-slate-800">
             {isPassport ? (
-              <PassportContent isOriginal={isOriginal} />
+              <PassportContent
+                isOriginal={isOriginal}
+                activeIssue={activeIssue}
+                activeLocation={activeLocation}
+              />
             ) : isBankStatement ? (
-              <BankStatementContent isOriginal={isOriginal} />
+              <BankStatementContent
+                isOriginal={isOriginal}
+                activeIssue={activeIssue}
+                activeLocation={activeLocation}
+              />
             ) : isEmployment ? (
-              <EmploymentLetterContent isOriginal={isOriginal} />
+              <EmploymentLetterContent
+                isOriginal={isOriginal}
+                activeIssue={activeIssue}
+                activeLocation={activeLocation}
+              />
             ) : (
-              <GenericDocumentContent documentName={documentName} isOriginal={isOriginal} />
+              <GenericDocumentContent
+                documentName={documentName}
+                isOriginal={isOriginal}
+              />
             )}
           </div>
         </div>
+
+        {/* Issue Annotation Card */}
+        <AnimatePresence>
+          {activeIssue && (
+            <IssueAnnotation
+              issue={activeIssue}
+              isActive={true}
+              position={{ top: 100, right: 20 }}
+              onClose={onClearActiveIssue}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
 }
 
-function PassportContent({ isOriginal }: { isOriginal: boolean }) {
+/**
+ * Highlighted Text Component
+ */
+function HighlightedText({
+  children,
+  isHighlighted,
+  severity = 'warning',
+}: {
+  children: React.ReactNode;
+  isHighlighted: boolean;
+  severity?: 'error' | 'warning' | 'info';
+}) {
+  if (!isHighlighted) return <>{children}</>;
+
+  const config = getSeverityConfig(severity);
+
+  return (
+    <motion.span
+      data-issue-highlight="true"
+      initial={{ backgroundColor: 'transparent' }}
+      animate={{
+        backgroundColor: severity === 'error' ? 'rgba(254, 202, 202, 0.8)' : 'rgba(254, 243, 199, 0.8)',
+      }}
+      transition={{ duration: 0.3 }}
+      className={cn(
+        'relative inline-block px-1 -mx-1 rounded',
+        'ring-2',
+        config.ring
+      )}
+    >
+      {children}
+      {/* Animated underline */}
+      <motion.span
+        initial={{ scaleX: 0 }}
+        animate={{ scaleX: 1 }}
+        transition={{ delay: 0.2, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className={cn(
+          'absolute bottom-0 left-0 right-0 h-0.5',
+          severity === 'error' ? 'bg-rose-500' : 'bg-amber-500'
+        )}
+        style={{ transformOrigin: 'left' }}
+      />
+    </motion.span>
+  );
+}
+
+function PassportContent({
+  isOriginal,
+  activeIssue,
+  activeLocation,
+}: {
+  isOriginal: boolean;
+  activeIssue: Issue | null;
+  activeLocation: { line: number; field: string; highlightText: string } | null;
+}) {
+  const highlightField = activeLocation?.field;
+
   return (
     <div className="space-y-6">
       {/* Passport Header */}
@@ -225,11 +587,14 @@ function PassportContent({ isOriginal }: { isOriginal: boolean }) {
       {/* Photo and MRZ area mock */}
       <div className="flex gap-6">
         <div className={cn(
-          "w-32 h-40 rounded flex items-center justify-center",
-          isOriginal ? "bg-slate-100 border-2 border-dashed border-slate-300" : "bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-300"
+          "w-32 h-40 rounded flex items-center justify-center relative",
+          isOriginal ? "bg-slate-100 border-2 border-dashed border-slate-300" : "bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-300",
+          highlightField === 'Photo Area' && "ring-2 ring-amber-400"
         )}>
           {isOriginal ? (
-            <span className="text-[10px] text-slate-400 text-center px-2">Photo<br/>Area</span>
+            <HighlightedText isHighlighted={highlightField === 'Photo Area'}>
+              <span className="text-[10px] text-slate-400 text-center px-2">Photo<br/>Area</span>
+            </HighlightedText>
           ) : (
             <div className="w-20 h-24 bg-slate-300 rounded" />
           )}
@@ -246,7 +611,11 @@ function PassportContent({ isOriginal }: { isOriginal: boolean }) {
           <div className="flex gap-4">
             <div>
               <p className="text-[10px] text-slate-400 uppercase">Date of Birth</p>
-              <p className="font-mono text-sm">15 MAR 1985</p>
+              <p className="font-mono text-sm">
+                <HighlightedText isHighlighted={highlightField === 'Date of Birth'}>
+                  15 MAR 1985
+                </HighlightedText>
+              </p>
             </div>
             <div>
               <p className="text-[10px] text-slate-400 uppercase">Sex</p>
@@ -278,7 +647,17 @@ function PassportContent({ isOriginal }: { isOriginal: boolean }) {
   );
 }
 
-function BankStatementContent({ isOriginal }: { isOriginal: boolean }) {
+function BankStatementContent({
+  isOriginal,
+  activeIssue,
+  activeLocation,
+}: {
+  isOriginal: boolean;
+  activeIssue: Issue | null;
+  activeLocation: { line: number; field: string; highlightText: string } | null;
+}) {
+  const highlightField = activeLocation?.field;
+
   return (
     <div className="space-y-6">
       {/* Bank Header */}
@@ -334,7 +713,11 @@ function BankStatementContent({ isOriginal }: { isOriginal: boolean }) {
               <td className="py-2">Opening Balance</td>
               <td className="py-2 text-right"></td>
               <td className="py-2 text-right"></td>
-              <td className="py-2 text-right font-semibold">£24,521.45</td>
+              <td className="py-2 text-right font-semibold">
+                <HighlightedText isHighlighted={highlightField === 'Account Balance'}>
+                  £24,521.45
+                </HighlightedText>
+              </td>
             </tr>
             <tr className="border-b border-slate-100">
               <td className="py-2">03 Dec</td>
@@ -366,7 +749,17 @@ function BankStatementContent({ isOriginal }: { isOriginal: boolean }) {
   );
 }
 
-function EmploymentLetterContent({ isOriginal }: { isOriginal: boolean }) {
+function EmploymentLetterContent({
+  isOriginal,
+  activeIssue,
+  activeLocation,
+}: {
+  isOriginal: boolean;
+  activeIssue: Issue | null;
+  activeLocation: { line: number; field: string; highlightText: string } | null;
+}) {
+  const highlightField = activeLocation?.field;
+
   return (
     <div className="space-y-6">
       {/* Company Letterhead */}
@@ -404,7 +797,11 @@ function EmploymentLetterContent({ isOriginal }: { isOriginal: boolean }) {
         </p>
 
         <p>
-          His current annual salary is £82,000 (Eighty-Two Thousand Pounds Sterling),
+          His current annual salary is{' '}
+          <HighlightedText isHighlighted={highlightField === 'Salary Line'}>
+            £82,000
+          </HighlightedText>{' '}
+          (Eighty-Two Thousand Pounds Sterling),
           payable monthly. This position is permanent and full-time.
         </p>
 
@@ -472,8 +869,7 @@ function GenericDocumentContent({ documentName, isOriginal }: { documentName: st
 }
 
 /**
- * Document Detail Modal
- * Shows document preview with Verified/Original toggle
+ * Document Detail Modal with Issue Navigation
  */
 export function DocumentDetailModal({
   isOpen,
@@ -481,20 +877,35 @@ export function DocumentDetailModal({
   document: doc,
   sourceFiles = [],
   onViewOriginal,
+  issues = [],
 }: DocumentDetailModalProps) {
   const [activeView, setActiveView] = useState<'verified' | 'original'>('verified');
+  const [activeIssueId, setActiveIssueId] = useState<string | null>(null);
 
-  // Reset view when document changes
+  // Filter issues related to this document
+  const documentIssues = useMemo(() => {
+    if (!doc) return [];
+    return issues.filter(i => i.documentIds?.includes(doc.id) && i.status === 'open');
+  }, [issues, doc]);
+
+  // Reset state when document changes
   useEffect(() => {
     if (doc) {
       setActiveView('verified');
+      setActiveIssueId(null);
     }
   }, [doc?.id]);
 
   // Handle escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        if (activeIssueId) {
+          setActiveIssueId(null);
+        } else {
+          onClose();
+        }
+      }
     };
 
     if (isOpen) {
@@ -506,7 +917,7 @@ export function DocumentDetailModal({
       window.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = '';
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, activeIssueId]);
 
   const statusColor = useMemo(() => {
     return doc ? getStatusColor(doc.pipelineStatus) : getStatusColor('processing');
@@ -526,33 +937,43 @@ export function DocumentDetailModal({
       }}
     >
       {/* Backdrop */}
-      <div
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
         className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-        style={{ animation: 'fadeIn 0.2s ease-out' }}
       />
 
       {/* Modal */}
-      <div
-        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden"
-        style={{ animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 20, scale: 0.98 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden"
       >
         {/* Header - Compact */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50/50">
           <div className="flex items-center gap-4 min-w-0">
             {/* Document Icon */}
-            <div className={cn(
-              'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
-              isReady
-                ? 'bg-emerald-100'
-                : hasIssue
-                ? 'bg-amber-100'
-                : 'bg-slate-100'
-            )}>
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.1 }}
+              className={cn(
+                'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
+                isReady
+                  ? 'bg-emerald-100'
+                  : hasIssue
+                  ? 'bg-amber-100'
+                  : 'bg-slate-100'
+              )}
+            >
               <FileText className={cn(
                 'w-5 h-5',
                 isReady ? 'text-emerald-600' : hasIssue ? 'text-amber-600' : 'text-slate-500'
               )} />
-            </div>
+            </motion.div>
 
             {/* Info */}
             <div className="min-w-0">
@@ -569,6 +990,16 @@ export function DocumentDetailModal({
                     <Layers className="w-2.5 h-2.5" />
                     {sourceFiles.length} sources
                   </span>
+                )}
+                {documentIssues.length > 0 && (
+                  <motion.span
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700"
+                  >
+                    <AlertTriangle className="w-2.5 h-2.5" />
+                    {documentIssues.length} issue{documentIssues.length > 1 ? 's' : ''}
+                  </motion.span>
                 )}
               </div>
             </div>
@@ -634,33 +1065,29 @@ export function DocumentDetailModal({
           </div>
         </div>
 
-        {/* PDF Preview Area */}
-        <div className="flex-1 overflow-hidden">
+        {/* PDF Preview Area with Issue Navigator */}
+        <div className="flex-1 overflow-hidden relative">
           <PdfPreviewMock
             documentName={doc.fileName || doc.name || 'Document'}
             documentType={doc.documentTypeId}
             isOriginal={activeView === 'original'}
+            issues={documentIssues}
+            activeIssueId={activeIssueId}
+            onClearActiveIssue={() => setActiveIssueId(null)}
           />
-        </div>
-      </div>
 
-      {/* Animations */}
-      <style jsx>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px) scale(0.98);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-      `}</style>
+          {/* Issue Navigator Overlay */}
+          <AnimatePresence>
+            {documentIssues.length > 0 && (
+              <IssueNavigator
+                issues={documentIssues}
+                activeIssueId={activeIssueId}
+                onSelectIssue={setActiveIssueId}
+              />
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.div>
     </div>
   );
 }
