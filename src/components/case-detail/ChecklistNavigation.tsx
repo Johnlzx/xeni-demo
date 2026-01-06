@@ -4,12 +4,13 @@ import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronUp,
-  ChevronDown,
   Loader2,
   FileText,
   CheckCircle2,
   AlertTriangle,
   Upload,
+  Check,
+  AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getEvidenceTemplateForVisaType } from '@/data/evidence-templates';
@@ -215,28 +216,51 @@ function SummaryStats({
   qualityCount: number;
   complianceCount: number;
 }) {
+  const progressPercent = totalSections > 0
+    ? Math.round((completedSections / totalSections) * 100)
+    : 0;
+
   return (
-    <div className="px-4 py-3 border-b border-slate-100">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-[0.04em]">
-          Evidence Checklist
-        </span>
-        <div className="flex items-center gap-2">
-          {qualityCount > 0 && (
-            <span className="flex items-center gap-1 text-[10px] font-semibold text-slate-500">
-              <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-              {qualityCount}
-            </span>
-          )}
-          {complianceCount > 0 && (
-            <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-              {complianceCount}
-            </span>
-          )}
-          <span className="text-[11px] font-medium text-slate-600 tabular-nums">
-            {completedSections}/{totalSections}
+    <div className="px-4 py-4 border-b border-slate-100">
+      {/* Title */}
+      <h3 className="text-sm font-semibold text-slate-900 mb-1">
+        Build Your Case
+      </h3>
+      <p className="text-[11px] text-slate-500 mb-3">
+        Complete all required evidence sections
+      </p>
+
+      {/* Progress Bar */}
+      <div className="space-y-1.5">
+        <div className="flex gap-0.5">
+          {Array.from({ length: totalSections }).map((_, index) => (
+            <div
+              key={index}
+              className={cn(
+                'h-1.5 flex-1 rounded-sm transition-colors',
+                index < completedSections ? 'bg-[#0E4369]' : 'bg-slate-200'
+              )}
+            />
+          ))}
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-slate-500">
+            <span className="font-semibold text-slate-700">{progressPercent}%</span> Complete
           </span>
+          <div className="flex items-center gap-2">
+            {qualityCount > 0 && (
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                {qualityCount}
+              </span>
+            )}
+            {complianceCount > 0 && (
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                {complianceCount}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -244,7 +268,7 @@ function SummaryStats({
 }
 
 /**
- * Section Item - Animated list item
+ * Section Item - Clean checklist item with icon-only status
  */
 function SectionItem({
   section,
@@ -255,12 +279,9 @@ function SectionItem({
   isSelected: boolean;
   onClick: () => void;
 }) {
-  const progressValue = section.progress.required > 0
-    ? Math.min(1, section.progress.current / section.progress.required)
-    : 0;
-
   const hasQuality = section.qualityCount > 0;
   const hasCompliance = section.complianceCount > 0;
+  const hasIssues = section.issueCount > 0;
 
   return (
     <motion.button
@@ -271,55 +292,74 @@ function SectionItem({
       transition={{ duration: 0.2 }}
       onClick={onClick}
       className={cn(
-        'w-full text-left px-4 py-2.5 transition-colors duration-150',
-        'border-l-2 border-transparent',
-        'hover:bg-slate-50/80',
-        isSelected && 'bg-slate-50 border-l-[#0E4369]',
-        section.isComplete && !isSelected && 'opacity-50'
+        'w-full text-left mx-2 mb-1 px-3 py-2.5 rounded-lg transition-all duration-150',
+        'border border-transparent',
+        isSelected
+          ? 'bg-slate-50 border-l-2 border-l-[#0E4369] rounded-l-none'
+          : 'hover:bg-slate-50'
       )}
+      style={{ width: 'calc(100% - 16px)' }}
     >
       <div className="flex items-center gap-2.5">
-        {/* Progress Ring */}
-        <ProgressRing
-          progress={progressValue}
-          isComplete={section.isComplete}
-          hasCritical={section.hasCritical}
-          isMissing={section.isMissing}
-        />
+        {/* Status Icon - Leading */}
+        <div className="flex-shrink-0">
+          {section.isComplete ? (
+            <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
+              <Check className="w-3 h-3 text-white" />
+            </div>
+          ) : section.hasCritical ? (
+            <div className="w-5 h-5 rounded-full bg-rose-500 flex items-center justify-center">
+              <AlertCircle className="w-3 h-3 text-white" />
+            </div>
+          ) : hasIssues ? (
+            <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center">
+              <AlertCircle className="w-3 h-3 text-white" />
+            </div>
+          ) : section.progress.current > 0 ? (
+            <div className="w-5 h-5 rounded-full border-2 border-[#0E4369] flex items-center justify-center">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#0E4369]" />
+            </div>
+          ) : (
+            <div className="w-5 h-5 rounded-full border-2 border-dashed border-slate-300" />
+          )}
+        </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span
-              className={cn(
-                'text-[12px] font-medium truncate leading-tight',
-                isSelected ? 'text-slate-900' : 'text-slate-700',
-                section.isComplete && 'line-through decoration-slate-300'
-              )}
-            >
-              {section.name}
-            </span>
-            {/* Issue pills */}
-            {section.issueCount > 0 && (
-              <div className="flex items-center gap-0.5 flex-shrink-0">
-                {hasQuality && (
-                  <span className="w-4 h-4 flex items-center justify-center text-[8px] font-bold rounded bg-slate-200 text-slate-600 tabular-nums">
-                    {section.qualityCount}
-                  </span>
-                )}
-                {hasCompliance && (
-                  <span className="w-4 h-4 flex items-center justify-center text-[8px] font-bold rounded bg-amber-100 text-amber-700 tabular-nums">
-                    {section.complianceCount}
-                  </span>
-                )}
-              </div>
+          <span
+            className={cn(
+              'text-[12px] font-medium truncate leading-tight block',
+              isSelected ? 'text-[#0E4369]' : 'text-slate-700'
             )}
-          </div>
-          {/* Meta */}
-          <p className="text-[9px] text-slate-400 mt-0.5 tabular-nums">
-            {section.progress.current}/{section.progress.required} docs
-          </p>
+          >
+            {section.name}
+          </span>
+          {/* Issue counts - subtle inline text */}
+          {hasIssues && (
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {hasQuality && (
+                <span className="text-[10px] text-slate-400">
+                  {section.qualityCount} QC
+                </span>
+              )}
+              {hasQuality && hasCompliance && (
+                <span className="text-[10px] text-slate-300">·</span>
+              )}
+              {hasCompliance && (
+                <span className="text-[10px] text-amber-500">
+                  {section.complianceCount} issue{section.complianceCount > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+          )}
         </div>
+
+        {/* Progress fraction */}
+        {!section.isComplete && section.priority === 'required' && (
+          <span className="text-[10px] text-slate-400 tabular-nums">
+            {section.progress.current}/{section.progress.required}
+          </span>
+        )}
       </div>
     </motion.button>
   );
@@ -377,7 +417,7 @@ function ProcessingFileItem({ file, index }: { file: ProcessingFile; index: numb
  * Processing Tray - Bottom collapsible section
  */
 function ProcessingTray({ files }: { files: ProcessingFile[] }) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const count = files.length;
 
   if (count === 0) return null;

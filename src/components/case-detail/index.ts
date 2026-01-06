@@ -33,3 +33,7 @@ export { ChecklistNavigation } from './ChecklistNavigation';
 export { SectionContentArea } from './SectionContentArea';
 export { FileTagsBar } from './FileTagsBar';
 export { SectionEmptyState } from './SectionEmptyState';
+export { ChecklistHero } from './ChecklistHero';
+export { SectionOverview } from './SectionOverview';
+export { PassportDetailsModal } from './PassportDetailsModal';
+export { DocumentOverviewPanel } from './DocumentOverviewPanel';
