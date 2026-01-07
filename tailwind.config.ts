@@ -65,10 +65,40 @@ const config: Config = {
           '30%': { backgroundColor: 'rgba(16, 185, 129, 0.1)' },
           '100%': { backgroundColor: 'rgba(16, 185, 129, 0)' },
         },
+        'fadeIn': {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        'scaleIn': {
+          '0%': { opacity: '0', transform: 'scale(0.95)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        'slideUp': {
+          '0%': { opacity: '0', transform: 'translateY(10px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'slideIn': {
+          '0%': { opacity: '0', transform: 'translateX(-20px)' },
+          '100%': { opacity: '1', transform: 'translateX(0)' },
+        },
+        'shimmer': {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(200%)' },
+        },
+        'pulse-subtle': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.7' },
+        },
       },
       animation: {
         'checkmark-pop': 'checkmark-pop 0.4s ease-out',
         'slot-complete': 'slot-complete 0.6s ease-out',
+        'fadeIn': 'fadeIn 0.3s ease-out',
+        'scaleIn': 'scaleIn 0.3s ease-out',
+        'slideUp': 'slideUp 0.4s ease-out',
+        'slideIn': 'slideIn 0.4s ease-out',
+        'shimmer': 'shimmer 2s infinite',
+        'pulse-subtle': 'pulse-subtle 2s ease-in-out infinite',
       },
     },
   },

@@ -1,8 +1,11 @@
 'use client';
 
-import { ChevronDown, Archive, List, Maximize2 } from 'lucide-react';
-import Link from 'next/link';
+import { useState } from 'react';
+import { ChevronRight, Globe, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
+import { getPassportBookColors } from '@/lib/passport-colors';
+import { PassportDetailsModal } from './PassportDetailsModal';
 import type { Case, Issue, Document } from '@/types';
 import { VISA_TYPES } from '@/data/constants';
 
@@ -20,6 +23,49 @@ interface CaseStatusHeaderProps {
   className?: string;
 }
 
+// Passport Book Icon - Mini version for header button, nationality-aware
+function PassportBookIconMini({
+  nationality,
+  className,
+}: {
+  nationality: string;
+  className?: string;
+}) {
+  const colors = getPassportBookColors(nationality);
+
+  return (
+    <div className={cn('relative w-7 h-8', className)}>
+      {/* Book base */}
+      <div className={cn(
+        'w-full h-full rounded bg-gradient-to-b shadow-sm relative overflow-hidden',
+        colors.gradient
+      )}>
+        {/* Spine shadow */}
+        <div className={cn(
+          'absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-r to-transparent',
+          colors.spine
+        )} />
+        {/* Cover emboss */}
+        <div className={cn('absolute inset-1 border rounded-sm', colors.border)} />
+        {/* Emblem */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className={cn(
+            'w-4 h-4 rounded-full border flex items-center justify-center',
+            colors.emblem
+          )}>
+            <div className={cn('w-2 h-2 rounded-full', colors.emblemInner)} />
+          </div>
+        </div>
+        {/* Page edges */}
+        <div className={cn(
+          'absolute right-0 top-1 bottom-1 w-0.5 rounded-r',
+          colors.pages
+        )} />
+      </div>
+    </div>
+  );
+}
+
 export function CaseStatusHeader({
   caseData,
   documents,
@@ -30,71 +76,82 @@ export function CaseStatusHeader({
   isReferencePanelOpen,
   className,
 }: CaseStatusHeaderProps) {
+  const [isPassportModalOpen, setIsPassportModalOpen] = useState(false);
+
   const visaConfig = VISA_TYPES[caseData.visaType];
-  const applicantFullName = `${caseData.applicant.passport.givenNames} ${caseData.applicant.passport.surname}`.toUpperCase();
+  const applicantName = `${caseData.applicant.passport.givenNames} ${caseData.applicant.passport.surname}`;
+  const advisorName = caseData.advisor?.name || 'Unassigned';
 
   return (
-    <div className={cn('bg-white border-b border-gray-200', className)}>
-      <div className="px-6 py-3.5">
-        <div className="flex items-center justify-between">
-          {/* Left: Breadcrumb Navigation */}
-          <div className="flex items-center gap-2 min-w-0">
-            <Link
+    <>
+      <div className={cn('bg-white border-b border-slate-200', className)}>
+        <div className="px-6 py-3">
+          <div className="flex items-center gap-4">
+            {/* Left Section: Back + Cases */}
+            <a
               href="/cases"
-              className="text-sm text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
+              className="flex items-center gap-1.5 px-2 py-1 -ml-2 rounded-md text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors group flex-shrink-0"
             >
-              Cases
-            </Link>
-            <span className="text-gray-300 flex-shrink-0">›</span>
-            <h1 className="text-sm font-medium text-gray-900 truncate">
-              {applicantFullName}'s {visaConfig.label}
-            </h1>
+              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+              <span className="text-sm font-medium">Cases</span>
+            </a>
 
-            {/* Status Badge */}
-            <span className="ml-2 inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium flex-shrink-0">
-              Intake
+            {/* Separator */}
+            <div className="h-6 w-px bg-slate-200 flex-shrink-0" />
+
+            {/* Client Name Button */}
+            <button
+              onClick={() => setIsPassportModalOpen(true)}
+              className={cn(
+                'flex items-center gap-2.5 px-3 py-1.5 rounded-lg',
+                'bg-slate-50 hover:bg-slate-100 border border-slate-200',
+                'transition-all duration-150',
+                'group'
+              )}
+            >
+              <PassportBookIconMini nationality={caseData.applicant.passport.nationality} />
+              <span className="text-sm font-semibold text-slate-900">
+                {applicantName}
+              </span>
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
+            </button>
+
+            {/* Separator */}
+            <div className="h-6 w-px bg-slate-200 flex-shrink-0" />
+
+            {/* Reference Number */}
+            <span className="text-sm font-mono text-slate-600 flex-shrink-0">
+              {caseData.referenceNumber}
             </span>
 
-            {/* Dropdown Arrow */}
-            <button className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors flex-shrink-0">
-              <ChevronDown className="w-4 h-4" />
-            </button>
-          </div>
+            {/* Visa Type Badge */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-slate-200 bg-white flex-shrink-0">
+              <Globe className="w-3.5 h-3.5 text-slate-500" />
+              <span className="text-xs font-medium text-slate-700">
+                {visaConfig.label}
+              </span>
+            </div>
 
-          {/* Right: Action Icons */}
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {/* Reference Panel Toggle (Box/Archive Icon) */}
-            <button
-              onClick={onToggleReferencePanel}
-              className={cn(
-                'p-2.5 rounded-lg transition-all duration-150',
-                isReferencePanelOpen
-                  ? 'bg-[#0E4369]/10 text-[#0E4369]'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-              )}
-              title="Toggle reference panel"
-            >
-              <Archive className="w-5 h-5" />
-            </button>
+            {/* Spacer */}
+            <div className="flex-1" />
 
-            {/* List View Icon */}
-            <button
-              className="p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              title="List view"
-            >
-              <List className="w-5 h-5" />
-            </button>
-
-            {/* Expand Icon */}
-            <button
-              className="p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Expand"
-            >
-              <Maximize2 className="w-5 h-5" />
-            </button>
+            {/* Right Section: Date + Advisor */}
+            <div className="flex items-center gap-1.5 text-sm text-slate-500 flex-shrink-0">
+              <span>{formatDate(caseData.createdAt, 'short')}</span>
+              <span className="text-slate-300">·</span>
+              <span className="font-medium text-slate-700">{advisorName}</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* Passport Details Modal */}
+      <PassportDetailsModal
+        isOpen={isPassportModalOpen}
+        onClose={() => setIsPassportModalOpen(false)}
+        passport={caseData.applicant.passport}
+        isVerified={true}
+      />
+    </>
   );
 }

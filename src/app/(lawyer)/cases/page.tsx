@@ -1,23 +1,68 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
-import { CreateCaseModal } from '@/components/case-hub';
-import { Globe, MoreVertical, Plus, Trash2, Settings, X } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  CreateCaseModal,
+  CaseCreationTransition,
+  useCaseCreationTransition,
+} from '@/components/case-hub';
+import { Globe, MoreVertical, Trash2, Settings, X } from 'lucide-react';
 import { MOCK_CASES } from '@/data/cases';
 import { VISA_TYPES, CASE_STATUSES, ROUTES } from '@/data/constants';
 import { formatDate } from '@/lib/utils';
 import Link from 'next/link';
-import type { Case } from '@/types';
+import type { Case, VisaType, PassportInfo } from '@/types';
+
+// Interface for create application form data
+interface CreateApplicationFormData {
+  visaType: VisaType;
+  referenceNumber: string;
+  advisorId: string;
+  assistantId?: string;
+  passport: PassportInfo;
+}
 
 export default function CasesPage() {
+  const router = useRouter();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [cases, setCases] = useState<Case[]>(MOCK_CASES);
   const [settingsCase, setSettingsCase] = useState<Case | null>(null);
 
-  const handleCreateCase = (data: unknown) => {
-    console.log('Creating case:', data);
+  // Case creation transition hook
+  const {
+    createdCase,
+    isTransitioning,
+    startTransition,
+    endTransition,
+  } = useCaseCreationTransition();
+
+  const handleCreateApplication = useCallback((data: CreateApplicationFormData) => {
+    console.log('Creating application:', data);
+
+    // Generate a new application ID
+    const newAppId = `case-new-${Date.now()}`;
+
+    // Store the created application data in sessionStorage for the detail page to use
+    const newAppData = {
+      id: newAppId,
+      visaType: data.visaType,
+      referenceNumber: data.referenceNumber,
+      passport: data.passport,
+      advisorId: data.advisorId,
+      createdAt: new Date().toISOString(),
+    };
+    sessionStorage.setItem(`new-case-${newAppId}`, JSON.stringify(newAppData));
+
+    // Close modal and start the transition animation flow
     setIsCreateModalOpen(false);
-  };
+    startTransition({
+      id: newAppId,
+      visaType: data.visaType,
+      referenceNumber: data.referenceNumber,
+      passport: data.passport,
+    });
+  }, [startTransition]);
 
   const handleDeleteCase = (caseId: string) => {
     if (confirm('Are you sure you want to delete this case?')) {
@@ -77,11 +122,11 @@ export default function CasesPage() {
         </div>
       </main>
 
-      {/* Create Case Modal */}
+      {/* Create Application Modal */}
       <CreateCaseModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onSubmit={handleCreateCase}
+        onSubmit={handleCreateApplication}
       />
 
       {/* Case Settings Modal */}
@@ -92,6 +137,12 @@ export default function CasesPage() {
           onSave={handleSaveSettings}
         />
       )}
+
+      {/* Case Creation Transition (Passport Reveal → Pre-screening → Checklist) */}
+      <CaseCreationTransition
+        createdCase={createdCase}
+        onTransitionComplete={endTransition}
+      />
     </div>
   );
 }

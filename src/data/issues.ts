@@ -224,6 +224,99 @@ export const MOCK_ISSUES: Issue[] = [
     detectedAt: '2024-12-17T15:00:00Z',
     resolvedAt: '2024-12-18T10:00:00Z',
   },
+
+  // ============================================
+  // Missing Document Issues - Case 001
+  // 必需文档缺失警告
+  // ============================================
+  {
+    id: 'issue-missing-001',
+    caseId: 'case-001',
+    type: 'quality',
+    severity: 'error',
+    status: 'open',
+    title: 'Police clearance certificate missing',
+    description: 'A police clearance certificate (ACRO) from the UK is required for this visa category but has not been uploaded. This is a mandatory document.',
+    suggestion: 'Request the applicant to apply for and upload their ACRO certificate.',
+    documentIds: [],
+    targetSlotId: 'police_certificate',
+    pipelineStage: 'quality_check',
+    aiRecommendation: {
+      action: 'send_notification',
+      message: 'Your application requires a UK police clearance certificate (ACRO). Please apply for this document at https://www.acro.police.uk and upload it once received. Processing typically takes 10-15 working days.',
+      channels: ['email', 'whatsapp'],
+      priority: 'high',
+    },
+    detectedAt: '2024-12-20T10:00:00Z',
+    isMissingDocument: true,
+  },
+  {
+    id: 'issue-missing-002',
+    caseId: 'case-001',
+    type: 'quality',
+    severity: 'error',
+    status: 'open',
+    title: 'TB test certificate missing',
+    description: 'A tuberculosis (TB) test certificate from an approved clinic is required for applicants from designated countries. This document is mandatory.',
+    suggestion: 'Direct the applicant to schedule a TB test at an approved IOM clinic.',
+    documentIds: [],
+    targetSlotId: 'tb_certificate',
+    pipelineStage: 'quality_check',
+    aiRecommendation: {
+      action: 'send_notification',
+      message: 'Your visa application requires a TB test certificate. Please book an appointment at an IOM-approved clinic in your country. Find approved clinics at: https://www.gov.uk/tb-test-visa',
+      channels: ['email'],
+      priority: 'high',
+    },
+    detectedAt: '2024-12-20T10:00:00Z',
+    isMissingDocument: true,
+  },
+  {
+    id: 'issue-missing-003',
+    caseId: 'case-001',
+    type: 'quality',
+    severity: 'warning',
+    status: 'open',
+    title: 'Council tax bill recommended',
+    description: 'While not strictly required, a council tax bill would strengthen the proof of address. The current utility bill may not be sufficient on its own.',
+    suggestion: 'Request an additional council tax statement as supporting evidence.',
+    documentIds: [],
+    targetSlotId: 'address_proof',
+    pipelineStage: 'quality_check',
+    aiRecommendation: {
+      action: 'send_notification',
+      message: 'To strengthen your application, please provide a council tax bill dated within the last 3 months. This will serve as additional proof of your UK address.',
+      channels: ['email'],
+      priority: 'medium',
+    },
+    detectedAt: '2024-12-20T11:00:00Z',
+    isMissingDocument: true,
+  },
+
+  // ============================================
+  // Missing Document Issues - Case 002
+  // ============================================
+  {
+    id: 'issue-missing-004',
+    caseId: 'case-002',
+    type: 'quality',
+    severity: 'error',
+    status: 'open',
+    title: 'Sponsor bank statements missing',
+    description: 'Bank statements from the UK-based sponsor are required to demonstrate financial capacity. No sponsor financial documents have been uploaded.',
+    suggestion: 'Request 6 months of bank statements from the sponsor.',
+    documentIds: [],
+    targetSlotId: 'sponsor_financial',
+    pipelineStage: 'quality_check',
+    aiRecommendation: {
+      action: 'send_notification',
+      message: 'Your sponsor needs to provide 6 months of consecutive bank statements. These should show:\n• Regular income deposits\n• Closing balance meeting the financial requirement\n• Account holder name matching the sponsor',
+      channels: ['email', 'whatsapp'],
+      priority: 'high',
+    },
+    detectedAt: '2024-12-19T14:00:00Z',
+    isMissingDocument: true,
+  },
 ];
 
 export function getIssuesByCaseId(caseId: string): Issue[] {

@@ -379,6 +379,8 @@ export interface Issue {
   aiRecommendation?: AIRecommendation; // AI 建议的处理方式
   // 管道阶段 - 明确问题发生在哪个阶段
   pipelineStage?: 'quality_check' | 'compliance_check';
+  // 是否为缺失文档问题
+  isMissingDocument?: boolean;
 }
 
 // ============================================

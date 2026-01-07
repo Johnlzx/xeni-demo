@@ -2,17 +2,17 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { notFound, useParams } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   CaseStatusHeader,
   ReferencePanel,
   ActionBar,
   DocumentDetailModal,
   ChecklistNavigation,
-  SectionContentArea,
   ClientNoteModal,
   IssueDetailView,
-  RequestActivitySidebar,
 } from '@/components/case-detail';
+import { EvidenceWorkspace } from '@/components/evidence-workspace';
 import type { ClientRequest } from '@/components/case-detail/RequestActivitySidebar';
 import { getEvidenceTemplateForVisaType } from '@/data/evidence-templates';
 import { getCaseById } from '@/data/cases';
@@ -23,12 +23,52 @@ import {
   type MergeSuggestion,
   type FileInfo,
 } from '@/services/mergeDetection';
-import type { Document } from '@/types';
+import type { Document, Case } from '@/types';
 
 export default function CaseDetailPage() {
   const params = useParams();
   const caseId = params.caseId as string;
-  const caseData = getCaseById(caseId);
+
+  // Try to get case from mock data first
+  const existingCaseData = getCaseById(caseId);
+
+  // State for new cases (loaded from sessionStorage)
+  const [caseData, setCaseData] = useState<Case | null>(existingCaseData ?? null);
+  const [isLoading, setIsLoading] = useState(!existingCaseData && caseId.startsWith('case-new-'));
+
+  // Load new case data from sessionStorage
+  useEffect(() => {
+    if (!existingCaseData && caseId.startsWith('case-new-')) {
+      const stored = sessionStorage.getItem(`new-case-${caseId}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // Create a minimal case object for the new case
+        const tempCase: Case = {
+          id: parsed.id,
+          referenceNumber: parsed.referenceNumber,
+          visaType: parsed.visaType,
+          status: 'intake',
+          applicant: {
+            id: `applicant-${Date.now()}`,
+            email: '',
+            passport: parsed.passport,
+          },
+          advisor: { id: parsed.advisorId, name: 'Advisor', email: '', role: 'lawyer' },
+          createdAt: parsed.createdAt,
+          updatedAt: parsed.createdAt,
+          stats: {
+            documentsTotal: 0,
+            documentsUploaded: 0,
+            qualityIssues: 0,
+            logicIssues: 0,
+          },
+        };
+        setCaseData(tempCase);
+      }
+      setIsLoading(false);
+    }
+  }, [caseId, existingCaseData]);
+
   const [isReferencePanelOpen, setIsReferencePanelOpen] = useState(false);
 
   // Demo mode: track resolved issues
@@ -54,11 +94,7 @@ export default function CaseDetailPage() {
   // Request tracking state - Map of issueId to ClientRequest
   const [issueRequests, setIssueRequests] = useState<Map<string, ClientRequest>>(new Map());
 
-  if (!caseData) {
-    notFound();
-  }
-
-  // Fetch related data
+  // Fetch related data (safe to call even if caseData is null - will return empty arrays)
   const documents = getDocumentsByCaseId(caseId);
   const rawIssues = getIssuesByCaseId(caseId);
 
@@ -73,8 +109,9 @@ export default function CaseDetailPage() {
 
   // Get evidence slot templates for this visa type
   const evidenceSlots = useMemo(() => {
+    if (!caseData) return [];
     return getEvidenceTemplateForVisaType(caseData.visaType);
-  }, [caseData.visaType]);
+  }, [caseData]);
 
   // Default section selection: first section with open issues, or first required section
   useEffect(() => {
@@ -467,31 +504,61 @@ export default function CaseDetailPage() {
     setSelectedIssueId(null);
   }, [selectedSectionId]);
 
+  // Show loading state while fetching new case data
+  if (isLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-500">Loading case...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 404 if case not found and not loading
+  if (!caseData) {
+    notFound();
+  }
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Status Header */}
-      <CaseStatusHeader
-        caseData={caseData}
-        documents={documents}
-        issues={issues}
-        onDemoResolveIssue={handleDemoResolveIssue}
-        onToggleReferencePanel={handleToggleReferencePanel}
-        isReferencePanelOpen={isReferencePanelOpen}
-      />
-
-      {/* Main Layout - Checklist Nav + Content + Reference Panel */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Checklist Navigation - Left Sidebar */}
-        <ChecklistNavigation
-          visaType={caseData.visaType}
+      <div className="relative z-[100]">
+        <CaseStatusHeader
+          caseData={caseData}
           documents={documents}
           issues={issues}
-          selectedSectionId={selectedSectionId}
-          onSelectSection={setSelectedSectionId}
+          onDemoResolveIssue={handleDemoResolveIssue}
+          onToggleReferencePanel={handleToggleReferencePanel}
+          isReferencePanelOpen={isReferencePanelOpen}
         />
+      </div>
+
+      {/* Main Layout - 3-column layout */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Checklist Navigation - Left Sidebar */}
+        <motion.div
+          initial={{ x: -50, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        >
+          <ChecklistNavigation
+            visaType={caseData.visaType}
+            documents={documents}
+            issues={issues}
+            selectedSectionId={selectedSectionId}
+            onSelectSection={setSelectedSectionId}
+          />
+        </motion.div>
 
         {/* Section Content Area or Issue Detail View */}
-        <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
+        <motion.div
+          className="flex-1 flex flex-col min-w-0"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.3, delay: 0.15 }}
+        >
           {selectedIssue ? (
             <IssueDetailView
               issue={selectedIssue}
@@ -504,29 +571,18 @@ export default function CaseDetailPage() {
               onSendReminder={handleSendReminder}
             />
           ) : (
-            <>
-              <SectionContentArea
-                section={selectedSection}
-                documents={sectionDocuments}
-                issues={sectionIssues}
-                onPreviewDocument={handlePreview}
-                onResolveIssue={handleDemoResolveIssue}
-                onRequestClient={handleRequestClient}
-                onSelectIssue={handleSelectIssue}
-              />
-
-              {/* Action Bar */}
-              <div className="bg-white border-t border-gray-100">
-                <ActionBar
-                  onAddReference={handleAddReference}
-                  onStartAutoFill={handleStartAutoFill}
-                />
-              </div>
-            </>
+            <EvidenceWorkspace
+              section={selectedSection}
+              documents={sectionDocuments}
+              issues={sectionIssues}
+              onPreviewDocument={handlePreview}
+              onResolveIssue={handleDemoResolveIssue}
+              className="flex-1"
+            />
           )}
-        </div>
+        </motion.div>
 
-        {/* Reference Panel (Push-style Sidebar) */}
+        {/* Reference Panel (Push-style Sidebar) - Always visible */}
         <ReferencePanel
           isOpen={isReferencePanelOpen}
           onClose={() => setIsReferencePanelOpen(false)}
